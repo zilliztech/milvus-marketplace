@@ -75,9 +75,9 @@ docker run -d --name milvus \
 Connect:
 
 ```python
-from pymilvus import connections
+from pymilvus import MilvusClient
 
-connections.connect(host="localhost", port="19530")
+client = MilvusClient(uri="http://localhost:19530")
 ```
 
 ## Docker Compose (Full)
@@ -123,10 +123,10 @@ docker-compose up -d
 ## Verify Installation
 
 ```python
-from pymilvus import connections, utility
+from pymilvus import MilvusClient
 
-connections.connect(host="localhost", port="19530")
-print(f"Milvus version: {utility.get_server_version()}")
+client = MilvusClient(uri="http://localhost:19530")
+print(f"Milvus version: {client.get_server_version()}")
 print("Connected successfully!")
 ```
 

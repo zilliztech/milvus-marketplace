@@ -10,63 +10,73 @@ Build intelligent Q&A systems based on documents.
 ## Complete Implementation
 
 ```python
-from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType
+from pymilvus import MilvusClient, DataType
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from openai import OpenAI
 
 class RAGSystem:
-    def __init__(self, collection_name: str = "rag_kb"):
-        connections.connect(host="localhost", port="19530")
+    def __init__(self, collection_name: str = "rag_kb", uri: str = "./milvus.db"):
+        self.client = MilvusClient(uri=uri)
+        self.collection_name = collection_name
         self.embed_model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
         self.llm = OpenAI()
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=512,
             chunk_overlap=50
         )
-        self.collection = self._init_collection(collection_name)
+        self._init_collection()
 
-    def _init_collection(self, name: str):
-        fields = [
-            FieldSchema("id", DataType.INT64, is_primary=True, auto_id=True),
-            FieldSchema("text", DataType.VARCHAR, max_length=65535),
-            FieldSchema("source", DataType.VARCHAR, max_length=512),
-            FieldSchema("embedding", DataType.FLOAT_VECTOR, dim=1024)
-        ]
-        schema = CollectionSchema(fields)
-        collection = Collection(name, schema)
-        collection.create_index("embedding", {
-            "index_type": "HNSW",
-            "metric_type": "COSINE",
-            "params": {"M": 16, "efConstruction": 256}
-        })
-        collection.load()
-        return collection
+    def _init_collection(self):
+        if self.client.has_collection(self.collection_name):
+            return
+
+        schema = self.client.create_schema(auto_id=True, enable_dynamic_field=True)
+        schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
+        schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
+        schema.add_field(field_name="source", datatype=DataType.VARCHAR, max_length=512)
+        schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=1024)
+
+        index_params = self.client.prepare_index_params()
+        index_params.add_index(
+            field_name="embedding",
+            index_type="HNSW",
+            metric_type="COSINE",
+            params={"M": 16, "efConstruction": 256}
+        )
+
+        self.client.create_collection(
+            collection_name=self.collection_name,
+            schema=schema,
+            index_params=index_params
+        )
 
     def add_document(self, text: str, source: str = ""):
         """Add document"""
         chunks = self.splitter.split_text(text)
         embeddings = self.embed_model.encode(chunks).tolist()
-        sources = [source] * len(chunks)
-        self.collection.insert([chunks, sources, embeddings])
-        self.collection.flush()
+
+        data = [
+            {"text": chunk, "source": source, "embedding": emb}
+            for chunk, emb in zip(chunks, embeddings)
+        ]
+        self.client.insert(collection_name=self.collection_name, data=data)
         return len(chunks)
 
     def retrieve(self, query: str, top_k: int = 5):
         """Retrieve relevant chunks"""
         query_embedding = self.embed_model.encode([query]).tolist()
 
-        results = self.collection.search(
+        results = self.client.search(
+            collection_name=self.collection_name,
             data=query_embedding,
-            anns_field="embedding",
-            param={"metric_type": "COSINE", "params": {"ef": 64}},
             limit=top_k,
             output_fields=["text", "source"]
         )
 
         return [
-            {"text": hit.entity.get("text"), "source": hit.entity.get("source")}
-            for hits in results for hit in hits
+            {"text": hit["entity"]["text"], "source": hit["entity"]["source"]}
+            for hit in results[0]
         ]
 
     def generate(self, query: str, contexts: list):

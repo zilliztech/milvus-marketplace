@@ -133,21 +133,28 @@ def preprocess_image(image_path: str, max_size: int = 512):
 ## Image Search with Tags
 
 ```python
-# Add tags field to schema
-fields = [
-    FieldSchema("id", DataType.INT64, is_primary=True, auto_id=True),
-    FieldSchema("image_path", DataType.VARCHAR, max_length=512),
-    FieldSchema("tags", DataType.ARRAY, element_type=DataType.VARCHAR, max_capacity=20, max_length=64),
-    FieldSchema("embedding", DataType.FLOAT_VECTOR, dim=512)
-]
+from pymilvus import MilvusClient, DataType
+
+client = MilvusClient(uri="./milvus.db")
+
+# Create schema with tags field
+schema = client.create_schema(auto_id=True, enable_dynamic_field=True)
+schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
+schema.add_field(field_name="image_path", datatype=DataType.VARCHAR, max_length=512)
+schema.add_field(field_name="tags", datatype=DataType.ARRAY, element_type=DataType.VARCHAR, max_capacity=20, max_length=64)
+schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=512)
+
+index_params = client.prepare_index_params()
+index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE", params={"M": 16, "efConstruction": 256})
+
+client.create_collection(collection_name="image_search_tags", schema=schema, index_params=index_params)
 
 # Filter during search
-results = collection.search(
+results = client.search(
+    collection_name="image_search_tags",
     data=[embedding],
-    anns_field="embedding",
-    param={"metric_type": "COSINE", "params": {"ef": 64}},
     limit=10,
-    expr='array_contains(tags, "cat")',  # Filter images with cat tag
+    filter='array_contains(tags, "cat")',  # Filter images with cat tag
     output_fields=["image_path", "tags"]
 )
 ```

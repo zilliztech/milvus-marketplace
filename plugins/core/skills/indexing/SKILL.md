@@ -21,83 +21,82 @@ Create Collections and indexes in Milvus.
 ### Create Collection
 
 ```python
-from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType
+from pymilvus import MilvusClient, DataType
 
-# Connect
-connections.connect(host="localhost", port="19530")
+# Connect (use local file or remote server)
+client = MilvusClient(uri="./milvus.db")  # Local file
+# client = MilvusClient(uri="http://localhost:19530")  # Docker/Server
 
-# Define fields
-fields = [
-    FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
-    FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
-    FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=1024)
-]
+# Create schema
+schema = client.create_schema(auto_id=True, enable_dynamic_field=True)
+schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
+schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
+schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=1024)
 
-# Create
-schema = CollectionSchema(fields, description="My collection")
-collection = Collection("my_collection", schema)
+# Prepare index params
+index_params = client.prepare_index_params()
+index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE", params={"M": 16, "efConstruction": 256})
+
+# Create collection with schema and index
+client.create_collection(collection_name="my_collection", schema=schema, index_params=index_params)
 ```
 
-### Create Index
+### Index Types
 
 **HNSW (Recommended, <1M data)**
 ```python
-index_params = {
-    "index_type": "HNSW",
-    "metric_type": "COSINE",  # or L2, IP
-    "params": {"M": 16, "efConstruction": 256}
-}
-collection.create_index("embedding", index_params)
+index_params = client.prepare_index_params()
+index_params.add_index(
+    field_name="embedding",
+    index_type="HNSW",
+    metric_type="COSINE",  # or L2, IP
+    params={"M": 16, "efConstruction": 256}
+)
 ```
 
 **IVF_FLAT (1M-10M)**
 ```python
-index_params = {
-    "index_type": "IVF_FLAT",
-    "metric_type": "L2",
-    "params": {"nlist": 1024}
-}
-collection.create_index("embedding", index_params)
+index_params = client.prepare_index_params()
+index_params.add_index(
+    field_name="embedding",
+    index_type="IVF_FLAT",
+    metric_type="L2",
+    params={"nlist": 1024}
+)
 ```
 
 **IVF_PQ (>10M, memory efficient)**
 ```python
-index_params = {
-    "index_type": "IVF_PQ",
-    "metric_type": "L2",
-    "params": {"nlist": 1024, "m": 8, "nbits": 8}
-}
-collection.create_index("embedding", index_params)
-```
-
-### Load Collection
-
-```python
-collection.load()
+index_params = client.prepare_index_params()
+index_params.add_index(
+    field_name="embedding",
+    index_type="IVF_PQ",
+    metric_type="L2",
+    params={"nlist": 1024, "m": 8, "nbits": 8}
+)
 ```
 
 ### Collection with Partitions
 
 ```python
 # Create partitions
-collection.create_partition("2024_01")
-collection.create_partition("2024_02")
+client.create_partition(collection_name="my_collection", partition_name="2024_01")
+client.create_partition(collection_name="my_collection", partition_name="2024_02")
 
 # Insert with partition
-collection.insert(data, partition_name="2024_01")
+client.insert(collection_name="my_collection", data=data, partition_name="2024_01")
 
 # Search with partition
-collection.search(..., partition_names=["2024_01"])
+client.search(collection_name="my_collection", data=query_embedding, partition_names=["2024_01"], limit=10)
 ```
 
 ### With Scalar Index
 
 ```python
-# Create index for VARCHAR field (speeds up filtering)
-collection.create_index(
-    field_name="category",
-    index_name="category_index"
-)
+# Add scalar index to index_params (speeds up filtering)
+index_params = client.prepare_index_params()
+index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE")
+index_params.add_index(field_name="category", index_type="AUTOINDEX")  # Scalar index
 ```
 
 ## Distance Metric Selection

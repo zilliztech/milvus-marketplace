@@ -16,23 +16,22 @@ Functional Testing → Quality Evaluation → Performance Testing
 def test_basic_workflow():
     """Verify basic workflow"""
     # 1. Connect
-    from pymilvus import connections, Collection
-    connections.connect(host="localhost", port="19530")
+    from pymilvus import MilvusClient
+
+    client = MilvusClient(uri="http://localhost:19530")
 
     # 2. Insert test data
-    collection = Collection("test_collection")
     test_data = ["Test text 1", "Test text 2", "Test text 3"]
     embeddings = model.encode(test_data).tolist()
-    collection.insert([test_data, embeddings])
-    collection.flush()
+    data = [{"text": text, "embedding": emb} for text, emb in zip(test_data, embeddings)]
+    client.insert(collection_name="test_collection", data=data)
 
     # 3. Search verification
     query = "test"
     query_embedding = model.encode([query]).tolist()
-    results = collection.search(
+    results = client.search(
+        collection_name="test_collection",
         data=query_embedding,
-        anns_field="embedding",
-        param={"metric_type": "COSINE", "params": {"ef": 64}},
         limit=3,
         output_fields=["text"]
     )
@@ -68,15 +67,19 @@ def test_edge_cases():
 ```python
 def test_error_handling():
     """Error handling"""
+    from pymilvus import MilvusClient
+
     # Connection failure
     try:
-        connections.connect(host="invalid", port="19530", timeout=5)
+        client = MilvusClient(uri="http://invalid:19530", timeout=5)
+        client.list_collections()
     except Exception as e:
         print(f"✓ Connection failure handled correctly: {type(e).__name__}")
 
     # Invalid collection
     try:
-        Collection("nonexistent_collection")
+        client = MilvusClient(uri="http://localhost:19530")
+        client.query(collection_name="nonexistent_collection", filter="", limit=1)
     except Exception as e:
         print(f"✓ Invalid collection handled correctly: {type(e).__name__}")
 ```
