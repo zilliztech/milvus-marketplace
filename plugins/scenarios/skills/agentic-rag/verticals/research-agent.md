@@ -118,21 +118,27 @@ tools = [
 
 ```python
 from pymilvus import MilvusClient
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import json
 
 class ResearchAgent:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self.findings = []  # Research findings notes
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def search_papers(self, query: str, year_from: int = None,
                       year_to: int = None, limit: int = 10) -> list:
         """Search papers"""
-        embedding = self.model.encode(query).tolist()
+        embedding = self._embed(query).tolist()
 
         filters = []
         if year_from:
@@ -201,7 +207,7 @@ class ResearchAgent:
     def search_news(self, query: str, source: str = None, days: int = 30) -> list:
         """Search news"""
         import time
-        embedding = self.model.encode(query).tolist()
+        embedding = self._embed(query).tolist()
 
         cutoff = int(time.time()) - days * 24 * 3600
 
@@ -260,8 +266,8 @@ Requirements:
 
 Report:"""
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -308,8 +314,8 @@ Please systematically complete the research task."""
         }]
 
         for i in range(max_iterations):
-            response = self.llm.chat.completions.create(
-                model="gpt-4",
+            response = self.openai.chat.completions.create(
+                model="gpt-5-mini",
                 messages=messages,
                 tools=tools,
                 tool_choice="auto"

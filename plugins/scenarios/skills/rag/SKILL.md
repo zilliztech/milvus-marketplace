@@ -11,7 +11,6 @@ Build intelligent Q&A systems based on documents.
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from openai import OpenAI
 
@@ -19,13 +18,20 @@ class RAGSystem:
     def __init__(self, collection_name: str = "rag_kb", uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
         self.collection_name = collection_name
-        self.embed_model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=512,
             chunk_overlap=50
         )
         self._init_collection()
+
+    def _embed(self, texts: list) -> list:
+        """Generate embeddings using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=texts
+        )
+        return [item.embedding for item in response.data]
 
     def _init_collection(self):
         if self.client.has_collection(self.collection_name):
@@ -35,7 +41,7 @@ class RAGSystem:
         schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
         schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
         schema.add_field(field_name="source", datatype=DataType.VARCHAR, max_length=512)
-        schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=1024)
+        schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
         index_params.add_index(
@@ -54,7 +60,7 @@ class RAGSystem:
     def add_document(self, text: str, source: str = ""):
         """Add document"""
         chunks = self.splitter.split_text(text)
-        embeddings = self.embed_model.encode(chunks).tolist()
+        embeddings = self._embed(chunks)
 
         data = [
             {"text": chunk, "source": source, "embedding": emb}
@@ -65,7 +71,7 @@ class RAGSystem:
 
     def retrieve(self, query: str, top_k: int = 5):
         """Retrieve relevant chunks"""
-        query_embedding = self.embed_model.encode([query]).tolist()
+        query_embedding = self._embed([query])
 
         results = self.client.search(
             collection_name=self.collection_name,
@@ -85,8 +91,8 @@ class RAGSystem:
             f"[Source: {c['source']}]\n{c['text']}" for c in contexts
         ])
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": f"""Answer the question based on the following reference materials. If there is no relevant information in the materials, please state so.
@@ -165,8 +171,8 @@ def query_with_history(self, question: str, history: list = None):
 def stream_generate(self, query: str, contexts: list):
     context_text = "\n\n".join([c['text'] for c in contexts])
 
-    stream = self.llm.chat.completions.create(
-        model="gpt-4",
+    stream = self.openai.chat.completions.create(
+        model="gpt-5-mini",
         messages=[{"role": "user", "content": f"...{context_text}...{query}"}],
         stream=True
     )

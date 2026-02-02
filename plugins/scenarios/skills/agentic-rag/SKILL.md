@@ -26,17 +26,25 @@ User input → Agent thinks → Decide whether to retrieve → Call retrieval to
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import json
 
 class AgenticRAG:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.embed_model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self.collection_name = "agentic_rag"
         self._init_collection()
+
+    def _embed(self, texts: list) -> list:
+        """Generate embeddings using OpenAI API"""
+        if isinstance(texts, str):
+            texts = [texts]
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=texts
+        )
+        return [item.embedding for item in response.data]
 
         # Define tools
         self.tools = [
@@ -87,7 +95,7 @@ class AgenticRAG:
         schema.add_field("id", DataType.INT64, is_primary=True, auto_id=True)
         schema.add_field("text", DataType.VARCHAR, max_length=65535)
         schema.add_field("source", DataType.VARCHAR, max_length=512)
-        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
         index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE",
@@ -103,13 +111,13 @@ class AgenticRAG:
         from langchain.text_splitter import RecursiveCharacterTextSplitter
         splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
         chunks = splitter.split_text(text)
-        embeddings = self.embed_model.encode(chunks).tolist()
+        embeddings = self._embed(chunks)
         data = [{"text": c, "source": source, "embedding": e} for c, e in zip(chunks, embeddings)]
         self.client.insert(collection_name=self.collection_name, data=data)
 
     def search_knowledge_base(self, query: str, top_k: int = 5):
         """Tool: Search knowledge base"""
-        embedding = self.embed_model.encode(query).tolist()
+        embedding = self._embed(query)[0]
         results = self.client.search(
             collection_name=self.collection_name,
             data=[embedding],
@@ -121,7 +129,7 @@ class AgenticRAG:
 
     def search_by_source(self, query: str, source: str):
         """Tool: Search within specific source"""
-        embedding = self.embed_model.encode(query).tolist()
+        embedding = self._embed(query)[0]
         results = self.client.search(
             collection_name=self.collection_name,
             data=[embedding],
@@ -162,8 +170,8 @@ Rules:
 
         iteration = 0
         while iteration < max_iterations:
-            response = self.llm.chat.completions.create(
-                model="gpt-4",
+            response = self.openai.chat.completions.create(
+                model="gpt-5-mini",
                 messages=messages,
                 tools=self.tools,
                 tool_choice="auto"

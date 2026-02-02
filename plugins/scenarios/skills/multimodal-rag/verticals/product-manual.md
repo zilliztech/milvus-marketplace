@@ -30,7 +30,7 @@
 schema = client.create_schema()
 schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 schema.add_field("content", DataType.VARCHAR, max_length=65535)      # Text or image description
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
 # Content type
 schema.add_field("content_type", DataType.VARCHAR, max_length=16)   # text/image/table
@@ -51,7 +51,6 @@ schema.add_field("page", DataType.INT32)
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import fitz  # PyMuPDF
 import pdfplumber
@@ -61,9 +60,16 @@ import base64
 class ProductManualRAG:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self._init_collection()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def _describe_image(self, image_path: str, context: str = "") -> str:
         """Describe image with VLM"""
@@ -75,8 +81,8 @@ class ProductManualRAG:
             prompt += f" This is an image from a product manual, context: {context}"
         prompt += " If it's an operation step diagram, please describe the steps. If it's a parts diagram, please describe each part."
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4o",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": [
@@ -135,7 +141,7 @@ class ProductManualRAG:
                     data.append({
                         "id": f"{product}_{model}_{page_num}_text_{len(data)}",
                         "content": chunk,
-                        "embedding": self.model.encode(chunk).tolist(),
+                        "embedding": self._embed(chunk).tolist(),
                         "content_type": "text",
                         "image_path": "",
                         "product": product,
@@ -152,7 +158,7 @@ class ProductManualRAG:
                 data.append({
                     "id": f"{product}_{model}_{page_num}_table_{i}",
                     "content": table,
-                    "embedding": self.model.encode(table).tolist(),
+                    "embedding": self._embed(table).tolist(),
                     "content_type": "table",
                     "image_path": "",
                     "product": product,
@@ -186,7 +192,7 @@ class ProductManualRAG:
                     data.append({
                         "id": f"{product}_{model}_{page_num}_img_{img_idx}",
                         "content": description,
-                        "embedding": self.model.encode(description).tolist(),
+                        "embedding": self._embed(description).tolist(),
                         "content_type": "image",
                         "image_path": img_path,
                         "product": product,
@@ -214,7 +220,7 @@ class ProductManualRAG:
 
     def query(self, question: str, product: str = None, model: str = None) -> dict:
         """QA"""
-        embedding = self.model.encode(question).tolist()
+        embedding = self._embed(question).tolist()
 
         # Build filter conditions
         filters = []
@@ -308,8 +314,8 @@ class ProductManualRAG:
             "text": f"\nQuestion: {question}\n\nPlease answer based on the references above. If it involves operation steps, list detailed steps."
         })
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4o",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=messages,
             temperature=0.3
         )

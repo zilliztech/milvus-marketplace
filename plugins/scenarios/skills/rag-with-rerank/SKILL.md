@@ -33,19 +33,28 @@ Cross-Encoder encodes query and document together, capturing finer-grained inter
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import CrossEncoder
 from openai import OpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 class RAGWithRerank:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.embed_model = SentenceTransformer('BAAI/bge-large-en-v1.5')
+        self.openai = OpenAI()
         self.reranker = CrossEncoder('BAAI/bge-reranker-large')
-        self.llm = OpenAI()
         self.splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
         self.collection_name = "rag_rerank"
         self._init_collection()
+
+    def _embed(self, texts: list) -> list:
+        """Generate embeddings using OpenAI API"""
+        if isinstance(texts, str):
+            texts = [texts]
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=texts
+        )
+        return [item.embedding for item in response.data]
 
     def _init_collection(self):
         if self.client.has_collection(self.collection_name):
@@ -55,7 +64,7 @@ class RAGWithRerank:
         schema.add_field("id", DataType.INT64, is_primary=True, auto_id=True)
         schema.add_field("text", DataType.VARCHAR, max_length=65535)
         schema.add_field("source", DataType.VARCHAR, max_length=512)
-        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
         index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE",
@@ -70,14 +79,14 @@ class RAGWithRerank:
     def add_document(self, text: str, source: str = ""):
         """Add document"""
         chunks = self.splitter.split_text(text)
-        embeddings = self.embed_model.encode(chunks).tolist()
+        embeddings = self._embed(chunks)
         data = [{"text": c, "source": source, "embedding": e} for c, e in zip(chunks, embeddings)]
         self.client.insert(collection_name=self.collection_name, data=data)
         return len(chunks)
 
     def retrieve(self, query: str, top_k: int = 50):
         """Stage 1: Vector recall"""
-        embedding = self.embed_model.encode(query).tolist()
+        embedding = self._embed(query)[0]
         results = self.client.search(
             collection_name=self.collection_name,
             data=[embedding],
@@ -105,8 +114,8 @@ class RAGWithRerank:
             f"[Source: {c['source']}]\n{c['text']}" for c in contexts
         ])
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": f"""Answer the question based on the following references. Ensure accuracy, and indicate if uncertain.

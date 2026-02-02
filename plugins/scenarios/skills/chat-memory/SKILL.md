@@ -24,17 +24,23 @@ User message → Retrieve relevant history → Combine context → LLM generates
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import time
 
 class ChatMemory:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self.collection_name = "chat_memory"
         self._init_collection()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def _init_collection(self):
         if self.client.has_collection(self.collection_name):
@@ -47,7 +53,7 @@ class ChatMemory:
         schema.add_field("content", DataType.VARCHAR, max_length=65535)
         schema.add_field("timestamp", DataType.INT64)
         schema.add_field("session_id", DataType.VARCHAR, max_length=64)
-        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
         index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE",
@@ -67,7 +73,7 @@ class ChatMemory:
 
     def store_message(self, user_id: str, role: str, content: str, session_id: str = ""):
         """Store message"""
-        embedding = self.model.encode(content).tolist()
+        embedding = self._embed(content)
         self.client.insert(
             collection_name=self.collection_name,
             data=[{
@@ -84,7 +90,7 @@ class ChatMemory:
     def retrieve_relevant_history(self, user_id: str, query: str, limit: int = 10,
                                    time_decay: bool = True) -> list:
         """Retrieve relevant history"""
-        embedding = self.model.encode(query).tolist()
+        embedding = self._embed(query)
 
         results = self.client.search(
             collection_name=self.collection_name,
@@ -162,8 +168,8 @@ If the user mentions a previously discussed topic, try to connect to the earlier
         messages.append({"role": "user", "content": message})
 
         # 4. Generate response
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=messages,
             temperature=0.7
         )
@@ -191,8 +197,8 @@ If the user mentions a previously discussed topic, try to connect to the earlier
         user_messages = [r["content"] for r in results if r["role"] == "user"]
         sample_text = "\n".join(user_messages[-20:])  # Last 20
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": f"""Based on the following user conversation history, summarize the user's characteristics, interests, and preferences:

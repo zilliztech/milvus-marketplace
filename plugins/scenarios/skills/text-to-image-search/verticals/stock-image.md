@@ -26,7 +26,7 @@ For stock image scenarios, **dual-path combination** is recommended:
 schema = client.create_schema()
 schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 schema.add_field("image_url", DataType.VARCHAR, max_length=512)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
 # VLM generated description
 schema.add_field("description", DataType.VARCHAR, max_length=65535)
@@ -50,7 +50,6 @@ schema.add_field("download_count", DataType.INT32)
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from PIL import Image
 import base64
@@ -58,17 +57,24 @@ import base64
 class StockImageSearch:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.text_model = SentenceTransformer('BAAI/bge-large-en-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self._init_collection()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def _describe_image(self, image_path: str) -> dict:
         """Analyze image with VLM"""
         with open(image_path, "rb") as f:
             base64_image = base64.standard_b64encode(f.read()).decode()
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4o",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": [
@@ -120,7 +126,7 @@ class StockImageSearch:
 
         # 3. Vectorize description
         description = analysis["description"]
-        embedding = self.text_model.encode(description).tolist()
+        embedding = self._embed(description).tolist()
 
         # 4. Store
         self.client.insert(
@@ -158,7 +164,7 @@ class StockImageSearch:
                limit: int = 20) -> list:
         """Search images with text"""
         # 1. Vectorize query
-        embedding = self.text_model.encode(query).tolist()
+        embedding = self._embed(query).tolist()
 
         # 2. Build filter conditions
         filters = []
@@ -239,7 +245,7 @@ class StockImageSearch:
     def get_suggestions(self, query: str, limit: int = 10) -> list:
         """Search suggestions (autocomplete)"""
         # Autocomplete based on existing tags
-        embedding = self.text_model.encode(query).tolist()
+        embedding = self._embed(query).tolist()
 
         results = self.client.search(
             collection_name="stock_images",

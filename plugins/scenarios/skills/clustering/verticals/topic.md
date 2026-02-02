@@ -11,7 +11,7 @@
 
 | Config | Recommended Value | Description |
 |--------|------------------|-------------|
-| Embedding | `BAAI/bge-large-en-v1.5` | English documents |
+| Embedding | `text-embedding-3-small` | OpenAI embedding |
 | Clustering Algorithm | KMeans | Known number of clusters |
 | | DBSCAN | Auto-discover clusters |
 | | HDBSCAN | Hierarchical clustering |
@@ -21,19 +21,22 @@
 
 ```python
 from pymilvus import MilvusClient
-from sentence_transformers import SentenceTransformer
+from openai import OpenAI
 from sklearn.cluster import KMeans, DBSCAN
 import numpy as np
 
 class TopicClustering:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
 
     def embed_documents(self, documents: list) -> np.ndarray:
-        """Batch vectorization"""
-        return self.model.encode(documents)
+        """Batch vectorization using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=documents
+        )
+        return np.array([item.embedding for item in response.data])
 
     def cluster_kmeans(self, embeddings: np.ndarray, n_clusters: int) -> np.ndarray:
         """KMeans clustering"""
@@ -59,8 +62,8 @@ Documents:
 
 Topic name:"""
 
-        response = self.llm.chat.completions.create(
-            model="gpt-3.5-turbo",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
