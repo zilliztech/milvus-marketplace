@@ -1,0 +1,14 @@
+{
+  "name": "rag-toolkit",
+  "version": "0.1.0",
+  "description": "RAG (Retrieval Augmented Generation) solutions: basic RAG, RAG with reranking, agentic RAG, and multi-hop RAG for complex reasoning",
+  "author": {
+    "name": "Zilliz",
+    "url": "https://github.com/zilliztech"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "RAG", "retrieval-augmented-generation", "rag-with-rerank", "agentic-rag",
+    "multi-hop-rag", "knowledge-base", "document-qa", "milvus", "vector-search"
+  ]
+}

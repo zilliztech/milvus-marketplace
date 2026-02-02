@@ -1,0 +1,14 @@
+{
+  "name": "data-analytics",
+  "version": "0.1.0",
+  "description": "Data analytics solutions: duplicate detection (deduplication, plagiarism detection) and clustering (topic modeling, user segmentation)",
+  "author": {
+    "name": "Zilliz",
+    "url": "https://github.com/zilliztech"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "duplicate-detection", "deduplication", "clustering", "topic-modeling",
+    "similarity-analytics", "data-quality", "milvus", "vector-search"
+  ]
+}

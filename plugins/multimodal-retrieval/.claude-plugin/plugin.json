@@ -1,0 +1,14 @@
+{
+  "name": "multimodal-retrieval",
+  "version": "0.1.0",
+  "description": "Multimodal retrieval solutions: image-to-image search, text-to-image search, video content retrieval, and multimodal RAG for documents with images",
+  "author": {
+    "name": "Zilliz",
+    "url": "https://github.com/zilliztech"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "image-search", "text-to-image", "video-search", "multimodal-rag",
+    "visual-search", "CLIP", "VLM", "milvus", "vector-search"
+  ]
+}

@@ -10,17 +10,31 @@ The project is maintained by **Zilliz** and licensed under Apache 2.0.
 
 ## Architecture
 
-### Two-Layer Plugin System
+### Multi-Plugin Marketplace
 
 ```
-marketplace.json          → defines two plugins: core + scenarios
-├── plugins/core/         → methodology (pilot) + 6 atomic operators
-└── plugins/scenarios/    → 17 pre-built solution templates
+marketplace.json              → defines 7 plugins
+├── plugins/core/             → pilot (controller) + atomic operators
+├── plugins/rag-toolkit/      → RAG solutions (4 skills)
+├── plugins/memory-system/    → Long-term memory (1 skill)
+├── plugins/retrieval-system/ → Text search (4 skills)
+├── plugins/multimodal-retrieval/ → Image/video/multimodal (4 skills)
+├── plugins/rec-system/       → Recommendation (2 skills)
+└── plugins/data-analytics/   → Data analysis (2 skills)
 ```
 
 **Core plugin** (`plugins/core/skills/`): The `pilot` skill is the main controller that routes user requests. Other skills are atomic operators: `embedding`, `chunking`, `indexing`, `rerank`, `ray`, `local-setup`.
 
-**Scenarios plugin** (`plugins/scenarios/skills/`): 17 scenario directories, each with a `SKILL.md` and optional `verticals/` subdirectory for industry-specific guides.
+**Scenario plugins**: Pre-built solutions organized by use case:
+
+| Plugin | Skills | Description |
+|--------|--------|-------------|
+| `rag-toolkit` | rag, rag-with-rerank, agentic-rag, multi-hop-rag | RAG and knowledge base solutions |
+| `memory-system` | chat-memory | Long-term memory for chatbots |
+| `retrieval-system` | semantic-search, filtered-search, hybrid-search, multi-vector-search | Text search variations |
+| `multimodal-retrieval` | image-search, text-to-image-search, video-search, multimodal-rag | Image, video, and multimodal |
+| `rec-system` | item-to-item, user-to-item | Recommendation systems |
+| `data-analytics` | duplicate-detection, clustering | Data analysis patterns |
 
 ### Skill File Structure
 
@@ -50,9 +64,8 @@ The `pilot` skill asks exactly two questions (data type + query type), then auto
 
 | File | Purpose |
 |------|---------|
-| `.claude-plugin/marketplace.json` | Root marketplace definition, lists plugins |
-| `plugins/core/.claude-plugin/plugin.json` | Core plugin metadata (v0.2.0) |
-| `plugins/scenarios/.claude-plugin/plugin.json` | Scenarios plugin metadata (v0.1.0) |
+| `.claude-plugin/marketplace.json` | Root marketplace definition, lists all plugins |
+| `plugins/<name>/.claude-plugin/plugin.json` | Plugin metadata |
 
 ## Fixed Tech Stack (for generated code)
 
@@ -66,10 +79,11 @@ All generated application code uses this stack — no user choice involved:
 
 ## Contributing New Content
 
-- **New scenario**: Add directory under `plugins/scenarios/skills/<scenario-name>/` with a `SKILL.md`
+- **New skill in existing category**: Add directory under `plugins/<category>/skills/<skill-name>/` with a `SKILL.md`
 - **New core operator**: Add directory under `plugins/core/skills/<operator-name>/` with a `SKILL.md`
-- **New vertical**: Add `<vertical>.md` under the relevant scenario's `verticals/` directory
-- Update the routing table in `plugins/core/skills/pilot/SKILL.md` when adding new scenarios
+- **New vertical**: Add `<vertical>.md` under the relevant skill's `verticals/` directory
+- **New category plugin**: Create `plugins/<category>/` with `.claude-plugin/plugin.json` and `skills/` directory, then add to `marketplace.json`
+- Update the routing table in `plugins/core/skills/pilot/SKILL.md` when adding new skills
 
 ## Design Principles
 
