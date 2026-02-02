@@ -1,0 +1,14 @@
+{
+  "name": "memory-system",
+  "version": "0.1.0",
+  "description": "Long-term memory solutions for chatbots and AI assistants: conversation history retrieval, user profiling, and persistent memory across sessions",
+  "author": {
+    "name": "Zilliz",
+    "url": "https://github.com/zilliztech"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "chat-memory", "long-term-memory", "conversation-history", "chatbot-memory",
+    "persistent-memory", "user-profile", "milvus", "vector-search"
+  ]
+}

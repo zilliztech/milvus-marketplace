@@ -1,0 +1,14 @@
+{
+  "name": "rec-system",
+  "version": "0.1.0",
+  "description": "Recommendation system solutions: item-to-item similarity (related items, content-based) and user-to-item personalization (personalized feed, for-you)",
+  "author": {
+    "name": "Zilliz",
+    "url": "https://github.com/zilliztech"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "item-to-item", "user-to-item", "recommendation", "similar-items",
+    "personalization", "collaborative-filtering", "milvus", "vector-search"
+  ]
+}

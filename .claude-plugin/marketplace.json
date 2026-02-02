@@ -6,20 +6,50 @@
   },
   "metadata": {
     "description": "Build AI applications with vector search, RAG, and semantic search using Milvus",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "homepage": "https://milvus.io"
   },
   "plugins": [
     {
       "name": "core",
       "source": "./plugins/core",
-      "description": "Core tools for vector database development: pilot (main controller), embedding, chunking, indexing, data ingestion, and local deployment",
+      "description": "Core tools: pilot (main controller), embedding, chunking, indexing, rerank, ray, local-setup",
+      "version": "0.2.0"
+    },
+    {
+      "name": "rag-toolkit",
+      "source": "./plugins/rag-toolkit",
+      "description": "RAG solutions: basic RAG, rerank, agentic, multi-hop",
       "version": "0.1.0"
     },
     {
-      "name": "scenarios",
-      "source": "./plugins/scenarios",
-      "description": "Ready-made solutions for AI application scenarios: semantic search, RAG, document QA, image search, and recommendation systems",
+      "name": "memory-system",
+      "source": "./plugins/memory-system",
+      "description": "Long-term memory for chatbots and AI assistants",
+      "version": "0.1.0"
+    },
+    {
+      "name": "retrieval-system",
+      "source": "./plugins/retrieval-system",
+      "description": "Text search: semantic, filtered, hybrid (BM25 + vector), multi-vector",
+      "version": "0.1.0"
+    },
+    {
+      "name": "multimodal-retrieval",
+      "source": "./plugins/multimodal-retrieval",
+      "description": "Multimodal search: image, text-to-image, video, multimodal RAG",
+      "version": "0.1.0"
+    },
+    {
+      "name": "rec-system",
+      "source": "./plugins/rec-system",
+      "description": "Recommendation: item-to-item similarity, user-to-item personalization",
+      "version": "0.1.0"
+    },
+    {
+      "name": "data-analytics",
+      "source": "./plugins/data-analytics",
+      "description": "Data analytics: duplicate detection, clustering",
       "version": "0.1.0"
     }
   ]

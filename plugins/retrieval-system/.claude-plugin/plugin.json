@@ -1,0 +1,14 @@
+{
+  "name": "retrieval-system",
+  "version": "0.1.0",
+  "description": "Text retrieval solutions: semantic search, filtered search, hybrid search (BM25 + vector), and multi-vector search across multiple fields",
+  "author": {
+    "name": "Zilliz",
+    "url": "https://github.com/zilliztech"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "semantic-search", "filtered-search", "hybrid-search", "multi-vector-search",
+    "text-search", "BM25", "vector-search", "milvus"
+  ]
+}
