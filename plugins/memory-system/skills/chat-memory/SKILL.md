@@ -281,6 +281,6 @@ See `verticals/` directory for detailed guides:
 
 ## Related Tools
 
-- RAG: `scenarios:rag`
+- RAG: `rag-toolkit:rag`
 - Vectorization: `core:embedding`
 - Indexing: `core:indexing`

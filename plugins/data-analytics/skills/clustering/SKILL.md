@@ -267,5 +267,5 @@ See `verticals/` directory for detailed guides:
 ## Related Tools
 
 - Vectorization: `core:embedding`
-- Duplicate detection: `scenarios:duplicate-detection`
+- Duplicate detection: `data-analytics:duplicate-detection`
 - Indexing: `core:indexing`

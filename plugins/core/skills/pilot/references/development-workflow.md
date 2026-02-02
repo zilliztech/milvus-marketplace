@@ -26,11 +26,11 @@ Deliverables:
 
 | User Intent | Recommended Solution |
 |-------------|---------------------|
-| Text search, find similar content | `scenarios:semantic-search` |
-| Document Q&A, knowledge base chat | `scenarios:rag` |
-| Specific document Q&A | `scenarios:doc-qa` |
-| Image search, visual search | `scenarios:image-search` |
-| Personalized recommendations | `scenarios:recommendation` |
+| Text search, find similar content | `retrieval-system:semantic-search` |
+| Document Q&A, knowledge base chat | `rag-toolkit:rag` |
+| Specific document Q&A | `rag-toolkit:rag` |
+| Image search, visual search | `multimodal-retrieval:image-search` |
+| Personalized recommendations | `rec-system:user-to-item` |
 
 #### 2.2 Technical Selection
 

@@ -264,6 +264,6 @@ See `verticals/` directory for detailed guides:
 
 ## Related Tools
 
-- Basic RAG: `scenarios:rag`
-- Multi-hop RAG: `scenarios:multi-hop-rag`
+- Basic RAG: `rag-toolkit:rag`
+- Multi-hop RAG: `rag-toolkit:multi-hop-rag`
 - Reranking: `core:rerank`

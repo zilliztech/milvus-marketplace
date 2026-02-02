@@ -164,4 +164,4 @@ results = client.search(
 - Data processing orchestration: `core:ray`
 - Vectorization: `core:embedding`
 - Index optimization: `core:indexing`
-- Text-to-image search: `scenarios:text-to-image-search`
+- Text-to-image search: `multimodal-retrieval:text-to-image-search`

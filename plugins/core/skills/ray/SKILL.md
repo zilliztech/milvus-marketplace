@@ -289,7 +289,7 @@ Key steps:
 3. **Vectorization**: BGE for text, CLIP for frames
 4. **Write to Milvus**: Batch insert
 
-See `scenarios:video-search`
+See `multimodal-retrieval:video-search`
 
 ### Batch PDF Import
 
@@ -300,7 +300,7 @@ Key steps:
 4. **Vectorization**: BGE Actor
 5. **Write to Milvus**: Batch insert
 
-See `scenarios:multimodal-rag`
+See `multimodal-retrieval:multimodal-rag`
 
 ### Batch Image Vectorization
 
@@ -309,7 +309,7 @@ Key steps:
 2. **CLIP inference**: GPU Actor Pool
 3. **Write to Milvus**: Batch insert
 
-See `scenarios:image-search`
+See `multimodal-retrieval:image-search`
 
 ## Scaling to Cluster
 

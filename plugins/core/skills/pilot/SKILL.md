@@ -65,29 +65,29 @@ Guide to indexing when user asks "which index to use" or "how to tune parameters
 
 Guide to local-setup when user asks "how to deploy Milvus" or "how to run locally".
 
-#### Scenarios → `scenarios:*`
+#### Scenarios
 
 Match scenarios when user describes specific application requirements:
 
 | User Intent | Scenario |
 |-------------|----------|
-| Text search, find similar | `scenarios:semantic-search` |
-| Keyword + semantic hybrid | `scenarios:hybrid-search` |
-| Search with filters | `scenarios:filtered-search` |
-| Multi-field joint search | `scenarios:multi-vector-search` |
-| Knowledge Q&A, RAG | `scenarios:rag` |
-| High-precision Q&A | `scenarios:rag-with-rerank` |
-| Complex question analysis | `scenarios:multi-hop-rag` |
-| Smart assistant | `scenarios:agentic-rag` |
-| Image search, visual search | `scenarios:image-search` |
-| Search images with text | `scenarios:text-to-image-search` |
-| Similar product recommendations | `scenarios:item-to-item` |
-| Personalized recommendations | `scenarios:user-to-item` |
-| Duplicate detection, deduplication | `scenarios:duplicate-detection` |
-| Clustering analysis | `scenarios:clustering` |
-| Conversation memory | `scenarios:chat-memory` |
-| Mixed image-text documents | `scenarios:multimodal-rag` |
-| Video search | `scenarios:video-search` |
+| Text search, find similar | `retrieval-system:semantic-search` |
+| Keyword + semantic hybrid | `retrieval-system:hybrid-search` |
+| Search with filters | `retrieval-system:filtered-search` |
+| Multi-field joint search | `retrieval-system:multi-vector-search` |
+| Knowledge Q&A, RAG | `rag-toolkit:rag` |
+| High-precision Q&A | `rag-toolkit:rag-with-rerank` |
+| Complex question analysis | `rag-toolkit:multi-hop-rag` |
+| Smart assistant | `rag-toolkit:agentic-rag` |
+| Image search, visual search | `multimodal-retrieval:image-search` |
+| Search images with text | `multimodal-retrieval:text-to-image-search` |
+| Similar product recommendations | `rec-system:item-to-item` |
+| Personalized recommendations | `rec-system:user-to-item` |
+| Duplicate detection, deduplication | `data-analytics:duplicate-detection` |
+| Clustering analysis | `data-analytics:clustering` |
+| Conversation memory | `memory-system:chat-memory` |
+| Mixed image-text documents | `multimodal-retrieval:multimodal-rag` |
+| Video search | `multimodal-retrieval:video-search` |
 
 #### Core Tools Quick Reference
 

@@ -196,4 +196,4 @@ def stream_generate(self, query: str, contexts: list):
 - Data processing orchestration: `core:ray`
 - Document chunking: `core:chunking`
 - Vectorization: `core:embedding`
-- With reranking: `scenarios:rag-with-rerank`
+- With reranking: `rag-toolkit:rag-with-rerank`

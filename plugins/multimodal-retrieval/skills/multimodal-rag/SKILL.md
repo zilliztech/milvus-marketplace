@@ -164,4 +164,4 @@ See `verticals/` directory for detailed guides:
 
 - Data processing orchestration: `core:ray`
 - Vectorization: `core:embedding`
-- Basic RAG: `scenarios:rag`
+- Basic RAG: `rag-toolkit:rag`

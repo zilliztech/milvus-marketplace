@@ -256,4 +256,4 @@ See `verticals/` directory for detailed guides:
 
 - Vectorization: `core:embedding`
 - Document chunking: `core:chunking`
-- Clustering: `scenarios:clustering`
+- Clustering: `data-analytics:clustering`

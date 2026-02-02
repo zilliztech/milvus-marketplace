@@ -248,6 +248,6 @@ See `verticals/` directory for detailed guides:
 
 ## Related Tools
 
-- Basic RAG: `scenarios:rag`
+- Basic RAG: `rag-toolkit:rag`
 - Reranking: `core:rerank`
 - Document chunking: `core:chunking`

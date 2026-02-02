@@ -136,4 +136,4 @@ See detailed guides in `verticals/` directory:
 
 - Data processing orchestration: `core:ray`
 - Vectorization: `core:embedding`
-- Image-to-image search: `scenarios:image-search`
+- Image-to-image search: `multimodal-retrieval:image-search`

@@ -239,6 +239,6 @@ See `verticals/` directory for detailed guides:
 
 ## Related Tools
 
-- Similar items: `scenarios:item-to-item`
+- Similar items: `rec-system:item-to-item`
 - Vectorization: `core:embedding`
 - Indexing: `core:indexing`

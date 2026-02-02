@@ -224,4 +224,4 @@ See `verticals/` directory for detailed guides:
 
 - Vectorization: `core:embedding`
 - Indexing: `core:indexing`
-- User recommendations: `scenarios:user-to-item`
+- User recommendations: `rec-system:user-to-item`

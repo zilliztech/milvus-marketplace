@@ -6,28 +6,28 @@ How to match the best solution for user requirements.
 
 | User Says | Actual Need | Recommended Solution |
 |-----------|-------------|---------------------|
-| "Search", "find similar" | Semantic search | `scenarios:semantic-search` |
-| "Keyword + semantic", "full-text + vector" | Hybrid search | `scenarios:hybrid-search` |
-| "Search with conditions", "filter by category" | Filtered search | `scenarios:filtered-search` |
-| "Match across multiple fields" | Multi-vector search | `scenarios:multi-vector-search` |
-| "Q&A", "knowledge base", "RAG" | Knowledge Q&A | `scenarios:rag` |
-| "Document Q&A", "PDF Q&A" | Document QA (RAG variant) | `scenarios:rag` |
-| "High-precision Q&A", "results not accurate enough" | RAG with rerank | `scenarios:rag-with-rerank` |
-| "Complex question", "multi-step reasoning" | Multi-hop RAG | `scenarios:multi-hop-rag` |
-| "Smart assistant", "autonomous agent" | Agentic RAG | `scenarios:agentic-rag` |
-| "Image-to-image", "image search" | Image search | `scenarios:image-search` |
-| "Search images with text description" | Text-to-image search | `scenarios:text-to-image-search` |
-| "Recommend similar products", "related items" | Item-to-item recommendation | `scenarios:item-to-item` |
-| "Personalized recommendations", "you might like" | User-to-item recommendation | `scenarios:user-to-item` |
-| "Find duplicates", "deduplication" | Duplicate detection | `scenarios:duplicate-detection` |
-| "Clustering", "group similar items" | Clustering analysis | `scenarios:clustering` |
-| "Remember conversations", "chat history" | Chat memory | `scenarios:chat-memory` |
-| "Mixed image-text documents", "product manuals" | Multimodal RAG | `scenarios:multimodal-rag` |
-| "Video search", "find video clips" | Video search | `scenarios:video-search` |
+| "Search", "find similar" | Semantic search | `retrieval-system:semantic-search` |
+| "Keyword + semantic", "full-text + vector" | Hybrid search | `retrieval-system:hybrid-search` |
+| "Search with conditions", "filter by category" | Filtered search | `retrieval-system:filtered-search` |
+| "Match across multiple fields" | Multi-vector search | `retrieval-system:multi-vector-search` |
+| "Q&A", "knowledge base", "RAG" | Knowledge Q&A | `rag-toolkit:rag` |
+| "Document Q&A", "PDF Q&A" | Document QA (RAG variant) | `rag-toolkit:rag` |
+| "High-precision Q&A", "results not accurate enough" | RAG with rerank | `rag-toolkit:rag-with-rerank` |
+| "Complex question", "multi-step reasoning" | Multi-hop RAG | `rag-toolkit:multi-hop-rag` |
+| "Smart assistant", "autonomous agent" | Agentic RAG | `rag-toolkit:agentic-rag` |
+| "Image-to-image", "image search" | Image search | `multimodal-retrieval:image-search` |
+| "Search images with text description" | Text-to-image search | `multimodal-retrieval:text-to-image-search` |
+| "Recommend similar products", "related items" | Item-to-item recommendation | `rec-system:item-to-item` |
+| "Personalized recommendations", "you might like" | User-to-item recommendation | `rec-system:user-to-item` |
+| "Find duplicates", "deduplication" | Duplicate detection | `data-analytics:duplicate-detection` |
+| "Clustering", "group similar items" | Clustering analysis | `data-analytics:clustering` |
+| "Remember conversations", "chat history" | Chat memory | `memory-system:chat-memory` |
+| "Mixed image-text documents", "product manuals" | Multimodal RAG | `multimodal-retrieval:multimodal-rag` |
+| "Video search", "find video clips" | Video search | `multimodal-retrieval:video-search` |
 
 ## Requirement Recognition
 
-### Semantic Search (`scenarios:semantic-search`)
+### Semantic Search (`retrieval-system:semantic-search`)
 
 **Typical expressions**:
 - "Search for similar content"
@@ -45,7 +45,7 @@ How to match the best solution for user requirements.
 - Similar article recommendations
 - Duplicate content detection
 
-### Hybrid Search (`scenarios:hybrid-search`)
+### Hybrid Search (`retrieval-system:hybrid-search`)
 
 **Typical expressions**:
 - "Keyword + semantic search"
@@ -62,7 +62,7 @@ How to match the best solution for user requirements.
 - Legal document retrieval
 - Academic paper search
 
-### Filtered Search (`scenarios:filtered-search`)
+### Filtered Search (`retrieval-system:filtered-search`)
 
 **Typical expressions**:
 - "Search within a category"
@@ -79,7 +79,7 @@ How to match the best solution for user requirements.
 - Recruitment (location + skill match)
 - Real estate (area + preference match)
 
-### Multi-Vector Search (`scenarios:multi-vector-search`)
+### Multi-Vector Search (`retrieval-system:multi-vector-search`)
 
 **Typical expressions**:
 - "Match across title and content"
@@ -96,7 +96,7 @@ How to match the best solution for user requirements.
 - Academic papers (title + abstract)
 - Resume matching (skills + experience)
 
-### RAG (`scenarios:rag`)
+### RAG (`rag-toolkit:rag`)
 
 **Typical expressions**:
 - "Knowledge base Q&A"
@@ -115,7 +115,7 @@ How to match the best solution for user requirements.
 - Customer service bots
 - Document assistant
 
-### RAG with Rerank (`scenarios:rag-with-rerank`)
+### RAG with Rerank (`rag-toolkit:rag-with-rerank`)
 
 **Typical expressions**:
 - "RAG results not accurate enough"
@@ -132,7 +132,7 @@ How to match the best solution for user requirements.
 - Medical Q&A
 - Financial report analysis
 
-### Multi-hop RAG (`scenarios:multi-hop-rag`)
+### Multi-hop RAG (`rag-toolkit:multi-hop-rag`)
 
 **Typical expressions**:
 - "Complex question that needs multiple lookups"
@@ -149,7 +149,7 @@ How to match the best solution for user requirements.
 - Fact-checking across sources
 - Troubleshooting workflows
 
-### Agentic RAG (`scenarios:agentic-rag`)
+### Agentic RAG (`rag-toolkit:agentic-rag`)
 
 **Typical expressions**:
 - "Smart assistant that decides what to search"
@@ -166,7 +166,7 @@ How to match the best solution for user requirements.
 - Research agents
 - Complex task automation
 
-### Image Search (`scenarios:image-search`)
+### Image Search (`multimodal-retrieval:image-search`)
 
 **Typical expressions**:
 - "Image-to-image search"
@@ -184,7 +184,7 @@ How to match the best solution for user requirements.
 - Image library management
 - Visual search
 
-### Text-to-Image Search (`scenarios:text-to-image-search`)
+### Text-to-Image Search (`multimodal-retrieval:text-to-image-search`)
 
 **Typical expressions**:
 - "Search images by text description"
@@ -201,7 +201,7 @@ How to match the best solution for user requirements.
 - Surveillance video retrieval
 - Medical image search
 
-### Item-to-Item Recommendation (`scenarios:item-to-item`)
+### Item-to-Item Recommendation (`rec-system:item-to-item`)
 
 **Typical expressions**:
 - "Recommend similar products"
@@ -218,7 +218,7 @@ How to match the best solution for user requirements.
 - Related articles
 - Similar videos
 
-### User-to-Item Recommendation (`scenarios:user-to-item`)
+### User-to-Item Recommendation (`rec-system:user-to-item`)
 
 **Typical expressions**:
 - "Personalized recommendations"
@@ -235,7 +235,7 @@ How to match the best solution for user requirements.
 - Content feeds
 - Job matching
 
-### Duplicate Detection (`scenarios:duplicate-detection`)
+### Duplicate Detection (`data-analytics:duplicate-detection`)
 
 **Typical expressions**:
 - "Find duplicate content"
@@ -252,7 +252,7 @@ How to match the best solution for user requirements.
 - Content deduplication
 - Resume deduplication
 
-### Clustering (`scenarios:clustering`)
+### Clustering (`data-analytics:clustering`)
 
 **Typical expressions**:
 - "Group similar items"
@@ -269,7 +269,7 @@ How to match the best solution for user requirements.
 - User segmentation
 - Anomaly detection
 
-### Chat Memory (`scenarios:chat-memory`)
+### Chat Memory (`memory-system:chat-memory`)
 
 **Typical expressions**:
 - "Remember conversation history"
@@ -286,7 +286,7 @@ How to match the best solution for user requirements.
 - Customer service memory
 - Game NPCs
 
-### Multimodal RAG (`scenarios:multimodal-rag`)
+### Multimodal RAG (`multimodal-retrieval:multimodal-rag`)
 
 **Typical expressions**:
 - "Documents with images and text"
@@ -303,7 +303,7 @@ How to match the best solution for user requirements.
 - Medical reports
 - Financial reports with charts
 
-### Video Search (`scenarios:video-search`)
+### Video Search (`multimodal-retrieval:video-search`)
 
 **Typical expressions**:
 - "Search within videos"
@@ -342,8 +342,8 @@ User requirements may involve multiple scenarios:
 **Example**: "I want to build an e-commerce platform with product search and recommendations"
 
 **Breakdown**:
-1. Product search → `scenarios:semantic-search` or `scenarios:image-search`
-2. Recommendation system → `scenarios:item-to-item` or `scenarios:user-to-item`
+1. Product search → `retrieval-system:semantic-search` or `multimodal-retrieval:image-search`
+2. Recommendation system → `rec-system:item-to-item` or `rec-system:user-to-item`
 
 **Strategy**:
 - Implement each module separately

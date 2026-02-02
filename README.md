@@ -17,9 +17,10 @@ We specialize in the **data retrieval** vertical:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    scenarios plugin                      │
-│   Pre-built scenario solutions (semantic-search, rag,   │
-│   image-search...) = Caching mechanism for AI era       │
+│              Scenario Plugins (6 plugins)               │
+│   rag-toolkit, retrieval-system, multimodal-retrieval,  │
+│   rec-system, memory-system, data-analytics             │
+│   = Pre-built solutions = AI era caching mechanism      │
 └─────────────────────────────────────────────────────────┘
                            ↑
                      Match / Combine
@@ -33,7 +34,7 @@ We specialize in the **data retrieval** vertical:
 
 **Core Ideas**:
 
-1. **scenarios = AI cache**: Pre-built scenario solutions act like cache - use directly if matched, no need to build from scratch
+1. **Scenario plugins = AI cache**: Pre-built scenario solutions act like cache - use directly if matched, no need to build from scratch
 2. **core = methodology + operators**: Universal development methodology + composable atomic capabilities
 3. **Ship 60% first, iterate to 80%**: Deliver working solutions quickly, then optimize based on feedback
 
@@ -45,7 +46,7 @@ Scenarios are classified by **architectural differences**, not by industry or mo
 - **Only model/parameters differ = vertical applications within same scenario**: Covered through configuration tables
 
 ```
-scenarios/
+plugins/retrieval-system/skills/
 ├── semantic-search/          # Category: architecture definition
 │   ├── SKILL.md              # Generic workflow + model selection table
 │   └── verticals/            # Subcategory: vertical application guides
@@ -87,8 +88,13 @@ User describes requirement
 # Core tools (required)
 /plugin install core@milvus-marketplace
 
-# Pre-built solutions (recommended)
-/plugin install scenarios@milvus-marketplace
+# Install scenario plugins as needed
+/plugin install rag-toolkit@milvus-marketplace        # RAG solutions
+/plugin install retrieval-system@milvus-marketplace   # Text search
+/plugin install multimodal-retrieval@milvus-marketplace # Image/video/multimodal
+/plugin install rec-system@milvus-marketplace         # Recommendations
+/plugin install memory-system@milvus-marketplace      # Chat memory
+/plugin install data-analytics@milvus-marketplace     # Duplicate detection, clustering
 ```
 
 ### 3. Start Using
@@ -119,9 +125,9 @@ The pilot will automatically activate, clarify requirements, and help you orches
 | Operator | **vlm-caption** | Image captioning (VLM) |
 | Environment | **local-setup** | Local Milvus deployment |
 
-### scenarios - Pre-built Solutions (17 Categories)
+### Scenario Plugins - Pre-built Solutions (6 Plugins, 17 Skills)
 
-#### Search
+#### retrieval-system - Text Search
 
 | Skill | Architecture | Vertical Applications |
 |-------|-------------|----------------------|
@@ -130,7 +136,7 @@ The pilot will automatically activate, clarify requirements, and help you orches
 | **filtered-search** | vector search + scalar filtering | E-commerce, recruitment, real estate |
 | **multi-vector-search** | multi-vector field joint search | Products, papers, resumes |
 
-#### RAG / Q&A
+#### rag-toolkit - RAG / Q&A
 
 | Skill | Architecture | Vertical Applications |
 |-------|-------------|----------------------|
@@ -139,39 +145,34 @@ The pilot will automatically activate, clarify requirements, and help you orches
 | **multi-hop-rag** | multi-round retrieval (results guide next round) | Complex research, fact-checking, troubleshooting |
 | **agentic-rag** | Agent autonomously decides retrieval strategy | Smart assistants, research agents |
 
-#### Image
+#### multimodal-retrieval - Image / Video / Multimodal
 
 | Skill | Architecture | Vertical Applications |
 |-------|-------------|----------------------|
 | **image-search** | CLIP embedding → vector search | E-commerce visual search, fashion, face, logo, design assets |
 | **text-to-image-search** | VLM captioning → text embedding | Stock images, surveillance retrieval, medical imaging |
 
-#### Recommendation
+#### rec-system - Recommendation
 
 | Skill | Architecture | Vertical Applications |
 |-------|-------------|----------------------|
 | **item-to-item** | Item vector similarity | Similar products, related articles, similar videos |
 | **user-to-item** | User vector + item vector + recall | Personalized recommendations, feeds, job matching |
 
-#### Detection
+#### data-analytics - Detection / Analytics
 
 | Skill | Architecture | Vertical Applications |
 |-------|-------------|----------------------|
 | **duplicate-detection** | Batch vector comparison + threshold | Plagiarism detection, content deduplication, resume deduplication |
 | **clustering** | Vector clustering analysis | Topic clustering, user segmentation, anomaly detection |
 
-#### Conversation / Memory
+#### memory-system - Conversation / Memory
 
 | Skill | Architecture | Vertical Applications |
 |-------|-------------|----------------------|
 | **chat-memory** | Conversation vectorization + time decay | Long-term assistants, customer service memory, game NPCs |
 
-#### Multimodal
-
-| Skill | Architecture | Vertical Applications |
-|-------|-------------|----------------------|
-| **multimodal-rag** | Mixed image-text parsing + VLM | Product manuals, medical reports, financial reports |
-| **video-search** | Frame extraction/transcription → embedding | Educational videos, meeting recordings, surveillance playback |
+*Note: `multimodal-rag` and `video-search` are also in `multimodal-retrieval` plugin.*
 
 ## Tech Stack (Fixed)
 
@@ -228,45 +229,53 @@ The pilot will:
 ```
 milvus-marketplace/
 ├── .claude-plugin/
-│   └── marketplace.json
+│   └── marketplace.json              # Marketplace definition (7 plugins)
 ├── plugins/
-│   ├── core/                           # Core capabilities
+│   ├── core/                         # Core capabilities
 │   │   ├── .claude-plugin/plugin.json
 │   │   └── skills/
-│   │       ├── pilot/                  # Controller + methodology
-│   │       ├── embedding/              # Atomic operators
+│   │       ├── pilot/                # Controller + methodology
+│   │       ├── embedding/            # Atomic operators
 │   │       ├── chunking/
 │   │       ├── indexing/
-│   │       ├── data-ingestion/
 │   │       ├── rerank/
-│   │       ├── pdf-extract/
-│   │       ├── vlm-caption/
+│   │       ├── ray/
 │   │       └── local-setup/
-│   └── scenarios/                      # Scenario solutions (17 categories)
+│   ├── rag-toolkit/                  # RAG solutions (4 skills)
+│   │   ├── .claude-plugin/plugin.json
+│   │   └── skills/
+│   │       ├── rag/
+│   │       ├── rag-with-rerank/
+│   │       ├── multi-hop-rag/
+│   │       └── agentic-rag/
+│   ├── retrieval-system/             # Text search (4 skills)
+│   │   ├── .claude-plugin/plugin.json
+│   │   └── skills/
+│   │       ├── semantic-search/
+│   │       ├── hybrid-search/
+│   │       ├── filtered-search/
+│   │       └── multi-vector-search/
+│   ├── multimodal-retrieval/         # Image/video/multimodal (4 skills)
+│   │   ├── .claude-plugin/plugin.json
+│   │   └── skills/
+│   │       ├── image-search/
+│   │       ├── text-to-image-search/
+│   │       ├── video-search/
+│   │       └── multimodal-rag/
+│   ├── rec-system/                   # Recommendations (2 skills)
+│   │   ├── .claude-plugin/plugin.json
+│   │   └── skills/
+│   │       ├── item-to-item/
+│   │       └── user-to-item/
+│   ├── memory-system/                # Long-term memory (1 skill)
+│   │   ├── .claude-plugin/plugin.json
+│   │   └── skills/
+│   │       └── chat-memory/
+│   └── data-analytics/               # Data analysis (2 skills)
 │       ├── .claude-plugin/plugin.json
 │       └── skills/
-│           ├── semantic-search/        # One directory per category
-│           │   ├── SKILL.md            # Architecture + generic workflow
-│           │   └── verticals/          # Vertical application guides
-│           │       ├── legal.md
-│           │       ├── academic.md
-│           │       └── ...
-│           ├── hybrid-search/
-│           ├── filtered-search/
-│           ├── multi-vector-search/
-│           ├── rag/
-│           ├── rag-with-rerank/
-│           ├── multi-hop-rag/
-│           ├── agentic-rag/
-│           ├── image-search/
-│           ├── text-to-image-search/
-│           ├── item-to-item/
-│           ├── user-to-item/
 │           ├── duplicate-detection/
-│           ├── clustering/
-│           ├── chat-memory/
-│           ├── multimodal-rag/
-│           └── video-search/
+│           └── clustering/
 └── README.md
 ```
 
@@ -303,6 +312,6 @@ claude plugin install core@milvus-marketplace --scope local
 
 Contributions of new scenario solutions or core operators are welcome.
 
-- New scenarios: Add under `plugins/scenarios/skills/`
+- New scenarios: Add under `plugins/<category>/skills/` (e.g., `plugins/rag-toolkit/skills/`)
 - New operators: Add under `plugins/core/skills/`
 - New vertical applications: Add under the corresponding scenario's `verticals/`

@@ -197,4 +197,4 @@ See detailed guides in `verticals/` directory:
 - Data processing orchestration: `core:ray`
 - Reranking: `core:rerank`
 - Document chunking: `core:chunking`
-- Basic RAG: `scenarios:rag`
+- Basic RAG: `rag-toolkit:rag`
