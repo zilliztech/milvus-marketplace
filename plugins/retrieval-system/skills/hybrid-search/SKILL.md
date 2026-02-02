@@ -62,8 +62,7 @@ class HybridSearch:
         # Create index
         index_params = self.client.prepare_index_params()
         index_params.add_index(field_name="sparse", index_type="SPARSE_INVERTED_INDEX", metric_type="BM25")
-        index_params.add_index(field_name="dense", index_type="HNSW", metric_type="COSINE",
-                               params={"M": 16, "efConstruction": 256})
+        index_params.add_index(field_name="dense", index_type="AUTOINDEX", metric_type="COSINE")
 
         self.client.create_collection(
             collection_name=self.collection_name,

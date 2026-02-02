@@ -97,8 +97,7 @@ class PlagiarismDetector:
         schema.add_field("doc_type", DataType.VARCHAR, max_length=32)      # paper/news/article
 
         index_params = self.client.prepare_index_params()
-        index_params.add_index("embedding", index_type="HNSW", metric_type="COSINE",
-                               params={"M": 16, "efConstruction": 256})
+        index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
         index_params.add_index("content_hash", index_type="TRIE")
 
         self.client.create_collection(

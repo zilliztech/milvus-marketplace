@@ -56,8 +56,7 @@ class ChatMemory:
         schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
-        index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE",
-                               params={"M": 16, "efConstruction": 256})
+        index_params.add_index(field_name="embedding", index_type="AUTOINDEX", metric_type="COSINE")
         index_params.add_index(field_name="user_id", index_type="TRIE")
         index_params.add_index(field_name="timestamp", index_type="STL_SORT")
 

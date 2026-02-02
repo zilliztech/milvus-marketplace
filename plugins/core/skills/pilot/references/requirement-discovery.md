@@ -87,7 +87,7 @@ Based on data and query, **directly select the toolchain**:
 **You**: Got it, I'll set up for you:
 - CLIP model to convert images to vectors
 - Store in Zilliz Cloud Serverless
-- HNSW index
+- AUTOINDEX
 - FastAPI for the API
 
 Let me generate the code - you can try running it first.

@@ -43,12 +43,9 @@ schema.add_field("in_stock", DataType.BOOL)
 
 # Multi-vector indexes
 index_params = client.prepare_index_params()
-index_params.add_index("title_vector", index_type="HNSW", metric_type="COSINE",
-                       params={"M": 16, "efConstruction": 256})
-index_params.add_index("desc_vector", index_type="HNSW", metric_type="COSINE",
-                       params={"M": 16, "efConstruction": 256})
-index_params.add_index("image_vector", index_type="HNSW", metric_type="COSINE",
-                       params={"M": 16, "efConstruction": 256})
+index_params.add_index("title_vector", index_type="AUTOINDEX", metric_type="COSINE")
+index_params.add_index("desc_vector", index_type="AUTOINDEX", metric_type="COSINE")
+index_params.add_index("image_vector", index_type="AUTOINDEX", metric_type="COSINE")
 ```
 
 ## Implementation

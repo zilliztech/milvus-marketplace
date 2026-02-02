@@ -47,8 +47,7 @@ schema.add_field("has_coupon", DataType.BOOL)
 
 # Index configuration
 index_params = client.prepare_index_params()
-index_params.add_index("embedding", index_type="HNSW", metric_type="COSINE",
-                       params={"M": 16, "efConstruction": 256})
+index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
 # Scalar indexes
 index_params.add_index("category_l1", index_type="TRIE")
 index_params.add_index("category_l2", index_type="TRIE")

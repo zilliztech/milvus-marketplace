@@ -1,13 +1,166 @@
 ---
 name: rag
-description: "Use when user wants to build RAG, Q&A system, or knowledge base. Triggers on: RAG, retrieval augmented generation, Q&A system, knowledge base, document Q&A, chat with docs, ChatGPT for docs, LLM + retrieval."
+description: "Use when user wants to build RAG, Q&A system, or knowledge base with documents. Triggers on: RAG, retrieval augmented generation, Q&A system, knowledge base, document Q&A, chat with docs, ChatGPT for docs, LLM + retrieval, semantic search over documents, ground LLM with facts, reduce hallucination, enterprise search."
 ---
 
 # RAG - Retrieval Augmented Generation
 
-Build intelligent Q&A systems based on documents.
+Build intelligent Q&A systems that ground LLM responses in your documents, reducing hallucinations and enabling knowledge updates without retraining.
 
-## Complete Implementation
+## When to Activate
+
+This skill should be activated when the user:
+- Wants to build a Q&A system over their documents
+- Needs to reduce LLM hallucinations with factual grounding
+- Asks about "chat with docs", "ChatGPT for my data", or similar
+- Wants to keep knowledge up-to-date without fine-tuning
+- Needs source attribution for answers
+
+## Interactive Flow
+
+Before implementing, gather requirements through focused questions.
+
+### Step 1: Understand the Use Case
+
+Ask ONE question at a time:
+
+```
+"What type of documents will users query?"
+
+A) Internal knowledge base (policies, procedures, docs)
+B) Customer-facing FAQ / support articles
+C) Technical documentation (API docs, code)
+D) Mixed / other
+
+Which one? (A/B/C/D)
+```
+
+Based on answer, follow up:
+
+| Answer | Next Question |
+|--------|---------------|
+| A (Internal KB) | "Do you need access control (different users see different docs)?" |
+| B (Customer FAQ) | "Do you need multi-turn conversation or single Q&A?" |
+| C (Technical) | "Will queries include code snippets or just natural language?" |
+| D (Mixed) | "Can you describe the main document types?" |
+
+### Step 2: Clarify Constraints
+
+```
+"What's your priority?"
+
+A) Accuracy first (willing to accept slower responses)
+B) Speed first (good-enough answers, fast)
+C) Cost first (minimize API calls)
+
+Choose A, B, or C.
+```
+
+| Priority | Recommendation |
+|----------|----------------|
+| Accuracy | Add reranking → suggest `rag-with-rerank` |
+| Speed | Basic RAG with caching |
+| Cost | Local embeddings (BGE), smaller LLM |
+
+### Step 3: Confirm Before Implementation
+
+```
+"Based on your requirements, I'll build:
+
+- **Document type**: [from Step 1]
+- **Chunk size**: [512 for general, 256 for FAQ, 1024 for technical]
+- **Embedding**: text-embedding-3-small
+- **Retrieval**: Top-5 with AUTOINDEX
+- **LLM**: gpt-4o-mini
+
+Does this look right? (yes / adjust [what])"
+```
+
+### Decision Points During Implementation
+
+| Checkpoint | Question |
+|------------|----------|
+| After chunking | "I've split into X chunks. Sample: [show 2]. Chunk size OK?" |
+| After indexing | "Collection created with X documents. Ready to test?" |
+| After first query | "Here's a test result. Quality acceptable?" |
+
+## Core Concepts
+
+### The RAG Paradigm
+
+RAG decouples **knowledge storage** from **reasoning capability**:
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  Documents  │───▶│  Retrieval  │───▶│    LLM      │
+│  (Facts)    │    │  (Relevance)│    │  (Reasoning)│
+└─────────────┘    └─────────────┘    └─────────────┘
+      ▲                   │                  │
+      │                   ▼                  ▼
+   Update            Top-K chunks        Answer with
+   anytime           as context          citations
+```
+
+**Key insight**: LLMs are excellent reasoners but unreliable knowledge stores. RAG leverages their reasoning while externalizing knowledge to a retrievable corpus.
+
+### Mental Model: Library + Librarian
+
+Think of RAG as a **library** (vector database) with a **librarian** (retrieval) helping a **scholar** (LLM):
+- The library stores books (document chunks) indexed by topic (embeddings)
+- The librarian finds relevant books based on the question
+- The scholar synthesizes an answer from the provided materials
+
+## Why RAG Over Alternatives
+
+| Approach | Pros | Cons | Best For |
+|----------|------|------|----------|
+| **RAG** | No retraining, instant updates, source attribution | Retrieval quality limits accuracy | Dynamic knowledge, audit requirements |
+| **Fine-tuning** | Deep knowledge integration | Expensive, slow updates, no citations | Stable domain expertise |
+| **Long context** | Simple, no chunking | Expensive per query, 128K limit | Small corpus, one-off analysis |
+| **Pure prompting** | Zero setup | Knowledge cutoff, hallucinations | General knowledge only |
+
+**Choose RAG when**:
+- Knowledge changes frequently (docs updated weekly/monthly)
+- Users need source attribution ("where did you get this?")
+- Corpus exceeds context window (>100K tokens)
+- Domain accuracy matters more than response speed
+
+**Avoid RAG when**:
+- Corpus is tiny (<10 pages) — just use long context
+- Questions don't need specific facts — pure LLM suffices
+- Latency is critical (<100ms) — consider caching or fine-tuning
+
+## Pipeline Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        INDEXING PHASE                            │
+├──────────────────────────────────────────────────────────────────┤
+│  Documents  ──▶  Chunking  ──▶  Embedding  ──▶  Vector Store    │
+│   (raw)         (512 tokens)   (1536-dim)      (Milvus)         │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                        QUERY PHASE                               │
+├──────────────────────────────────────────────────────────────────┤
+│  Question  ──▶  Embed  ──▶  Search  ──▶  Top-K  ──▶  LLM  ──▶  Answer
+│                           (HNSW)       chunks      (GPT-4)      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Stage Breakdown
+
+| Stage | Purpose | Key Decision |
+|-------|---------|--------------|
+| **Chunking** | Split docs into retrievable units | Chunk size (see [references/chunk-strategies.md](references/chunk-strategies.md)) |
+| **Embedding** | Convert text to vectors | Model choice (accuracy vs cost vs speed) |
+| **Indexing** | Enable fast similarity search | Index type (HNSW for most cases) |
+| **Retrieval** | Find relevant chunks | Top-K value (recall vs precision) |
+| **Generation** | Synthesize answer | Prompt design, temperature |
+
+## Implementation
+
+Core implementation with production-ready defaults:
 
 ```python
 from pymilvus import MilvusClient, DataType
@@ -19,181 +172,138 @@ class RAGSystem:
         self.client = MilvusClient(uri=uri)
         self.collection_name = collection_name
         self.openai = OpenAI()
-        self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=512,
-            chunk_overlap=50
-        )
+        self.splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
         self._init_collection()
 
     def _embed(self, texts: list) -> list:
-        """Generate embeddings using OpenAI API"""
-        response = self.openai.embeddings.create(
-            model="text-embedding-3-small",
-            input=texts
-        )
+        response = self.openai.embeddings.create(model="text-embedding-3-small", input=texts)
         return [item.embedding for item in response.data]
 
     def _init_collection(self):
         if self.client.has_collection(self.collection_name):
             return
-
         schema = self.client.create_schema(auto_id=True, enable_dynamic_field=True)
-        schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
-        schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
-        schema.add_field(field_name="source", datatype=DataType.VARCHAR, max_length=512)
-        schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=1536)
+        schema.add_field("id", DataType.INT64, is_primary=True)
+        schema.add_field("text", DataType.VARCHAR, max_length=65535)
+        schema.add_field("source", DataType.VARCHAR, max_length=512)
+        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
-        index_params.add_index(
-            field_name="embedding",
-            index_type="HNSW",
-            metric_type="COSINE",
-            params={"M": 16, "efConstruction": 256}
-        )
-
-        self.client.create_collection(
-            collection_name=self.collection_name,
-            schema=schema,
-            index_params=index_params
-        )
+        index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
+        self.client.create_collection(self.collection_name, schema=schema, index_params=index_params)
 
     def add_document(self, text: str, source: str = ""):
-        """Add document"""
         chunks = self.splitter.split_text(text)
         embeddings = self._embed(chunks)
-
-        data = [
-            {"text": chunk, "source": source, "embedding": emb}
-            for chunk, emb in zip(chunks, embeddings)
-        ]
-        self.client.insert(collection_name=self.collection_name, data=data)
+        data = [{"text": c, "source": source, "embedding": e} for c, e in zip(chunks, embeddings)]
+        self.client.insert(self.collection_name, data)
         return len(chunks)
 
-    def retrieve(self, query: str, top_k: int = 5):
-        """Retrieve relevant chunks"""
-        query_embedding = self._embed([query])
+    def query(self, question: str, top_k: int = 5):
+        # Retrieve
+        results = self.client.search(self.collection_name, self._embed([question]),
+                                     limit=top_k, output_fields=["text", "source"])
+        contexts = [{"text": h["entity"]["text"], "source": h["entity"]["source"]} for h in results[0]]
 
-        results = self.client.search(
-            collection_name=self.collection_name,
-            data=query_embedding,
-            limit=top_k,
-            output_fields=["text", "source"]
-        )
-
-        return [
-            {"text": hit["entity"]["text"], "source": hit["entity"]["source"]}
-            for hit in results[0]
-        ]
-
-    def generate(self, query: str, contexts: list):
-        """Generate answer"""
-        context_text = "\n\n".join([
-            f"[Source: {c['source']}]\n{c['text']}" for c in contexts
-        ])
-
+        # Generate
+        context_text = "\n\n".join([f"[{c['source']}]: {c['text']}" for c in contexts])
         response = self.openai.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[{
-                "role": "user",
-                "content": f"""Answer the question based on the following reference materials. If there is no relevant information in the materials, please state so.
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": f"""Answer based on these references. Cite sources.
 
-Reference materials:
+References:
 {context_text}
 
-Question: {query}
-
-Answer:"""
-            }],
+Question: {question}"""}],
             temperature=0.3
         )
-        return response.choices[0].message.content
+        return {"answer": response.choices[0].message.content,
+                "sources": list(set(c["source"] for c in contexts))}
+```
 
-    def query(self, question: str):
-        """Complete Q&A workflow"""
-        contexts = self.retrieve(question)
-        answer = self.generate(question, contexts)
-        return {
-            "answer": answer,
-            "sources": list(set(c["source"] for c in contexts))
-        }
-
-# Usage
+**Usage**:
+```python
 rag = RAGSystem()
-
-# Add documents
-rag.add_document("Milvus is an open-source vector database...", source="milvus_intro.md")
-rag.add_document("RAG enhances LLM's answering capabilities through retrieval...", source="rag_guide.md")
-
-# Q&A
+rag.add_document(open("docs/intro.md").read(), source="intro.md")
 result = rag.query("What is Milvus?")
 print(result["answer"])
-print("Sources:", result["sources"])
 ```
 
-## Optimization Tips
+For advanced patterns (streaming, multi-turn, hybrid search), see [references/advanced-patterns.md](references/advanced-patterns.md).
 
-### 1. Reranking
+## Configuration Guide
 
-```python
-from sentence_transformers import CrossEncoder
+### Chunk Size Selection
 
-reranker = CrossEncoder('BAAI/bge-reranker-large')
+| Document Type | chunk_size | overlap | Rationale |
+|---------------|------------|---------|-----------|
+| General docs | 512 | 50 | Balance context vs precision |
+| Technical docs | 1024 | 100 | Preserve code blocks, procedures |
+| FAQ | 256 | 0 | One Q&A per chunk |
+| Legal/contracts | 1024 | 200 | High overlap for clause continuity |
 
-def rerank(query: str, contexts: list, top_k: int = 3):
-    pairs = [[query, c["text"]] for c in contexts]
-    scores = reranker.predict(pairs)
-    sorted_results = sorted(zip(contexts, scores), key=lambda x: x[1], reverse=True)
-    return [r[0] for r in sorted_results[:top_k]]
+**Rule of thumb**: Start with 512/50, adjust based on answer quality.
 
-# Usage
-contexts = rag.retrieve(question, top_k=10)
-reranked = rerank(question, contexts, top_k=5)
-answer = rag.generate(question, reranked)
-```
+### Top-K Selection
 
-### 2. Multi-turn Conversation
+| Use Case | top_k | Why |
+|----------|-------|-----|
+| Precise factual Q&A | 3-5 | Less noise, focused context |
+| Research/synthesis | 8-12 | More perspectives |
+| With reranking | 20-50 | Recall high, reranker filters |
 
-```python
-def query_with_history(self, question: str, history: list = None):
-    # Combine historical context
-    if history:
-        context_prompt = "\n".join([
-            f"Q: {h['q']}\nA: {h['a']}" for h in history[-3:]
-        ])
-        question = f"Conversation history:\n{context_prompt}\n\nCurrent question: {question}"
+### Embedding Model Tradeoffs
 
-    return self.query(question)
-```
+| Model | Dim | Speed | Quality | Cost |
+|-------|-----|-------|---------|------|
+| text-embedding-3-small | 1536 | Fast | Good | $0.02/1M |
+| text-embedding-3-large | 3072 | Medium | Better | $0.13/1M |
+| BAAI/bge-large-en | 1024 | Local | Good | Free |
 
-### 3. Streaming Output
+See [references/embedding-models.md](references/embedding-models.md) for detailed comparison.
 
-```python
-def stream_generate(self, query: str, contexts: list):
-    context_text = "\n\n".join([c['text'] for c in contexts])
+## Common Pitfalls
 
-    stream = self.openai.chat.completions.create(
-        model="gpt-5-mini",
-        messages=[{"role": "user", "content": f"...{context_text}...{query}"}],
-        stream=True
-    )
+### 1. Chunks Too Large
+**Symptom**: Irrelevant information pollutes context
+**Fix**: Reduce chunk_size, or use semantic chunking
 
-    for chunk in stream:
-        if chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
-```
+### 2. Chunks Too Small
+**Symptom**: Answers lack context, feel fragmented
+**Fix**: Increase chunk_size or overlap
 
-## Chunking Strategy Recommendations
+### 3. Wrong Embedding Model for Language
+**Symptom**: Poor retrieval for non-English text
+**Fix**: Use multilingual model (bge-m3) or language-specific model
 
-| Document Type | chunk_size | overlap |
-|---------------|------------|---------|
-| General documents | 512 | 50 |
-| Technical docs | 1024 | 100 |
-| FAQ | 256 | 0 |
-| Legal contracts | 1024 | 200 |
+### 4. Ignoring Metadata
+**Symptom**: Can't filter by date, source, or category
+**Fix**: Store metadata fields, use filtered search
 
-## Related Tools
+### 5. No Source Attribution
+**Symptom**: Users don't trust answers
+**Fix**: Always return sources, include in prompt
 
-- Data processing orchestration: `core:ray`
-- Document chunking: `core:chunking`
-- Vectorization: `core:embedding`
-- With reranking: `rag-toolkit:rag-with-rerank`
+## When to Level Up
+
+| Symptom | Solution | Skill |
+|---------|----------|-------|
+| Top results aren't the best | Add reranking | [rag-with-rerank](../rag-with-rerank/SKILL.md) |
+| Complex multi-step questions | Use agentic approach | [agentic-rag](../agentic-rag/SKILL.md) |
+| Questions need cross-doc reasoning | Multi-hop retrieval | [multi-hop-rag](../multi-hop-rag/SKILL.md) |
+
+## References
+
+**Internal**:
+- [references/chunk-strategies.md](references/chunk-strategies.md) - Detailed chunking approaches
+- [references/embedding-models.md](references/embedding-models.md) - Model comparison and selection
+- [references/advanced-patterns.md](references/advanced-patterns.md) - Streaming, multi-turn, hybrid search
+
+**Core operators**:
+- `core:chunking` - Document chunking utilities
+- `core:embedding` - Embedding generation
+- `core:ray` - Data processing at scale
+
+**Verticals**:
+- [verticals/enterprise-kb.md](verticals/enterprise-kb.md) - Enterprise knowledge base
+- [verticals/customer-service.md](verticals/customer-service.md) - Customer service bot

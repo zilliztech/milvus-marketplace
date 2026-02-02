@@ -44,8 +44,7 @@ class UserToItemRecommender:
             schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=self.dim)
 
             index_params = self.client.prepare_index_params()
-            index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE",
-                                   params={"M": 16, "efConstruction": 256})
+            index_params.add_index(field_name="embedding", index_type="AUTOINDEX", metric_type="COSINE")
 
             self.client.create_collection(collection_name="items", schema=schema, index_params=index_params)
 
@@ -57,8 +56,7 @@ class UserToItemRecommender:
             schema.add_field("updated_at", DataType.INT64)
 
             index_params = self.client.prepare_index_params()
-            index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE",
-                                   params={"M": 16, "efConstruction": 256})
+            index_params.add_index(field_name="embedding", index_type="AUTOINDEX", metric_type="COSINE")
 
             self.client.create_collection(collection_name="users", schema=schema, index_params=index_params)
 

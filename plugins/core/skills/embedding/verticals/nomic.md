@@ -144,8 +144,7 @@ schema.add_field("text", DataType.VARCHAR, max_length=65535)
 schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=768)
 
 index_params = client.prepare_index_params()
-index_params.add_index("embedding", index_type="HNSW", metric_type="COSINE",
-                       params={"M": 16, "efConstruction": 256})
+index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
 
 client.create_collection("nomic_embeddings", schema=schema, index_params=index_params)
 

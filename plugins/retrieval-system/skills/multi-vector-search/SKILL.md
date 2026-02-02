@@ -48,10 +48,8 @@ class MultiVectorSearch:
         schema.add_field("content_embedding", DataType.FLOAT_VECTOR, dim=self.dim)
 
         index_params = self.client.prepare_index_params()
-        index_params.add_index(field_name="title_embedding", index_type="HNSW", metric_type="COSINE",
-                               params={"M": 16, "efConstruction": 256})
-        index_params.add_index(field_name="content_embedding", index_type="HNSW", metric_type="COSINE",
-                               params={"M": 16, "efConstruction": 256})
+        index_params.add_index(field_name="title_embedding", index_type="AUTOINDEX", metric_type="COSINE")
+        index_params.add_index(field_name="content_embedding", index_type="AUTOINDEX", metric_type="COSINE")
 
         self.client.create_collection(
             collection_name=self.collection_name,
