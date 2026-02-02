@@ -7,10 +7,23 @@ How to match the best solution for user requirements.
 | User Says | Actual Need | Recommended Solution |
 |-----------|-------------|---------------------|
 | "Search", "find similar" | Semantic search | `scenarios:semantic-search` |
+| "Keyword + semantic", "full-text + vector" | Hybrid search | `scenarios:hybrid-search` |
+| "Search with conditions", "filter by category" | Filtered search | `scenarios:filtered-search` |
+| "Match across multiple fields" | Multi-vector search | `scenarios:multi-vector-search` |
 | "Q&A", "knowledge base", "RAG" | Knowledge Q&A | `scenarios:rag` |
-| "Document Q&A", "PDF Q&A" | Document QA | `scenarios:doc-qa` |
+| "Document Q&A", "PDF Q&A" | Document QA (RAG variant) | `scenarios:rag` |
+| "High-precision Q&A", "results not accurate enough" | RAG with rerank | `scenarios:rag-with-rerank` |
+| "Complex question", "multi-step reasoning" | Multi-hop RAG | `scenarios:multi-hop-rag` |
+| "Smart assistant", "autonomous agent" | Agentic RAG | `scenarios:agentic-rag` |
 | "Image-to-image", "image search" | Image search | `scenarios:image-search` |
-| "Recommendations", "you might like" | Recommendation system | `scenarios:recommendation` |
+| "Search images with text description" | Text-to-image search | `scenarios:text-to-image-search` |
+| "Recommend similar products", "related items" | Item-to-item recommendation | `scenarios:item-to-item` |
+| "Personalized recommendations", "you might like" | User-to-item recommendation | `scenarios:user-to-item` |
+| "Find duplicates", "deduplication" | Duplicate detection | `scenarios:duplicate-detection` |
+| "Clustering", "group similar items" | Clustering analysis | `scenarios:clustering` |
+| "Remember conversations", "chat history" | Chat memory | `scenarios:chat-memory` |
+| "Mixed image-text documents", "product manuals" | Multimodal RAG | `scenarios:multimodal-rag` |
+| "Video search", "find video clips" | Video search | `scenarios:video-search` |
 
 ## Requirement Recognition
 
@@ -32,6 +45,57 @@ How to match the best solution for user requirements.
 - Similar article recommendations
 - Duplicate content detection
 
+### Hybrid Search (`scenarios:hybrid-search`)
+
+**Typical expressions**:
+- "Keyword + semantic search"
+- "Full-text search plus vector search"
+- "Want both exact match and fuzzy match"
+
+**Core characteristics**:
+- Combines vector search with BM25 keyword search
+- Score fusion (RRF or weighted)
+- Better recall than pure vector search
+
+**Use cases**:
+- E-commerce product search
+- Legal document retrieval
+- Academic paper search
+
+### Filtered Search (`scenarios:filtered-search`)
+
+**Typical expressions**:
+- "Search within a category"
+- "Filter by price/date then search"
+- "Search with conditions"
+
+**Core characteristics**:
+- Vector search + scalar field filtering
+- Requires additional metadata fields
+- Pre-filter or post-filter strategies
+
+**Use cases**:
+- E-commerce (category + similarity)
+- Recruitment (location + skill match)
+- Real estate (area + preference match)
+
+### Multi-Vector Search (`scenarios:multi-vector-search`)
+
+**Typical expressions**:
+- "Match across title and content"
+- "Search by multiple fields simultaneously"
+- "Joint search on text and image"
+
+**Core characteristics**:
+- Multiple vector fields in one collection
+- Weighted combination of similarity scores
+- Different embedding models per field
+
+**Use cases**:
+- Product search (title + description + image)
+- Academic papers (title + abstract)
+- Resume matching (skills + experience)
+
 ### RAG (`scenarios:rag`)
 
 **Typical expressions**:
@@ -39,6 +103,7 @@ How to match the best solution for user requirements.
 - "Let AI answer questions about my data"
 - "Document-based conversation"
 - "Private knowledge base"
+- "Ask questions about this PDF"
 
 **Core characteristics**:
 - Input: User question
@@ -50,21 +115,56 @@ How to match the best solution for user requirements.
 - Customer service bots
 - Document assistant
 
-### Document Q&A (`scenarios:doc-qa`)
+### RAG with Rerank (`scenarios:rag-with-rerank`)
 
 **Typical expressions**:
-- "Ask questions about this PDF"
-- "Upload document then ask"
-- "Analyze this report"
+- "RAG results not accurate enough"
+- "Need higher precision Q&A"
+- "Want to improve answer quality"
 
 **Core characteristics**:
-- Targeting specific documents
-- Not a general knowledge base
-- Temporary Q&A
+- Adds cross-encoder reranking after retrieval
+- Higher precision at the cost of latency
+- Typically retrieves more candidates then reranks
 
-**Difference from RAG**:
-- RAG: Long-term knowledge base, multiple documents
-- Doc-QA: Temporary documents, single or few documents
+**Use cases**:
+- Legal consulting
+- Medical Q&A
+- Financial report analysis
+
+### Multi-hop RAG (`scenarios:multi-hop-rag`)
+
+**Typical expressions**:
+- "Complex question that needs multiple lookups"
+- "Compare information from different documents"
+- "Multi-step reasoning"
+
+**Core characteristics**:
+- Multiple rounds of retrieval
+- Previous results guide next retrieval
+- Chain-of-thought reasoning
+
+**Use cases**:
+- Complex research questions
+- Fact-checking across sources
+- Troubleshooting workflows
+
+### Agentic RAG (`scenarios:agentic-rag`)
+
+**Typical expressions**:
+- "Smart assistant that decides what to search"
+- "Agent that autonomously finds answers"
+- "Intelligent research assistant"
+
+**Core characteristics**:
+- Agent autonomously decides retrieval strategy
+- Can use multiple tools and data sources
+- Dynamic query planning
+
+**Use cases**:
+- Smart assistants
+- Research agents
+- Complex task automation
 
 ### Image Search (`scenarios:image-search`)
 
@@ -72,7 +172,7 @@ How to match the best solution for user requirements.
 - "Image-to-image search"
 - "Find similar images"
 - "Image retrieval"
-- "Search images with text"
+- "Visual search"
 
 **Core characteristics**:
 - Images as input or output
@@ -84,23 +184,141 @@ How to match the best solution for user requirements.
 - Image library management
 - Visual search
 
-### Recommendation System (`scenarios:recommendation`)
+### Text-to-Image Search (`scenarios:text-to-image-search`)
+
+**Typical expressions**:
+- "Search images by text description"
+- "Find photos matching a description"
+- "Text query for images"
+
+**Core characteristics**:
+- VLM generates captions for images
+- Text embedding on captions
+- Text query matches image descriptions
+
+**Use cases**:
+- Stock image search
+- Surveillance video retrieval
+- Medical image search
+
+### Item-to-Item Recommendation (`scenarios:item-to-item`)
 
 **Typical expressions**:
 - "Recommend similar products"
-- "You might like"
-- "Personalized recommendations"
-- "Collaborative filtering"
+- "Related articles"
+- "Similar videos"
 
 **Core characteristics**:
-- Based on user behavior or content similarity
-- Personalized
+- Item vector similarity
+- Content-based recommendation
+- No user profile needed
+
+**Use cases**:
+- Similar products
+- Related articles
+- Similar videos
+
+### User-to-Item Recommendation (`scenarios:user-to-item`)
+
+**Typical expressions**:
+- "Personalized recommendations"
+- "You might like"
+- "Personalized feed"
+
+**Core characteristics**:
+- User vector + item vector matching
+- Based on user behavior/preferences
 - Real-time requirements
 
 **Use cases**:
-- E-commerce recommendations
-- Content recommendations
-- Social recommendations
+- Personalized product recommendations
+- Content feeds
+- Job matching
+
+### Duplicate Detection (`scenarios:duplicate-detection`)
+
+**Typical expressions**:
+- "Find duplicate content"
+- "Deduplication"
+- "Plagiarism detection"
+
+**Core characteristics**:
+- Batch vector comparison
+- Similarity threshold
+- Pairwise matching
+
+**Use cases**:
+- Plagiarism detection
+- Content deduplication
+- Resume deduplication
+
+### Clustering (`scenarios:clustering`)
+
+**Typical expressions**:
+- "Group similar items"
+- "Topic clustering"
+- "Find natural groupings"
+
+**Core characteristics**:
+- Vector clustering analysis
+- Unsupervised grouping
+- Cluster labeling
+
+**Use cases**:
+- Topic clustering
+- User segmentation
+- Anomaly detection
+
+### Chat Memory (`scenarios:chat-memory`)
+
+**Typical expressions**:
+- "Remember conversation history"
+- "Long-term memory for chatbot"
+- "Context-aware conversations"
+
+**Core characteristics**:
+- Conversation vectorization
+- Time decay weighting
+- Relevant memory retrieval
+
+**Use cases**:
+- Long-term assistants
+- Customer service memory
+- Game NPCs
+
+### Multimodal RAG (`scenarios:multimodal-rag`)
+
+**Typical expressions**:
+- "Documents with images and text"
+- "Product manuals with diagrams"
+- "Mixed media Q&A"
+
+**Core characteristics**:
+- Mixed image-text parsing
+- VLM for image understanding
+- Combined retrieval
+
+**Use cases**:
+- Product manuals
+- Medical reports
+- Financial reports with charts
+
+### Video Search (`scenarios:video-search`)
+
+**Typical expressions**:
+- "Search within videos"
+- "Find specific video clips"
+- "Video content retrieval"
+
+**Core characteristics**:
+- Frame extraction or transcription
+- Embedding on frames/text
+- Temporal indexing
+
+**Use cases**:
+- Educational video search
+- Meeting recording search
+- Surveillance playback
 
 ## No Match Situations
 
@@ -125,7 +343,7 @@ User requirements may involve multiple scenarios:
 
 **Breakdown**:
 1. Product search → `scenarios:semantic-search` or `scenarios:image-search`
-2. Recommendation system → `scenarios:recommendation`
+2. Recommendation system → `scenarios:item-to-item` or `scenarios:user-to-item`
 
 **Strategy**:
 - Implement each module separately

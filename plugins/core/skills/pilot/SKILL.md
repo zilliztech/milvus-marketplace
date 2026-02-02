@@ -74,6 +74,7 @@ Match scenarios when user describes specific application requirements:
 | Text search, find similar | `scenarios:semantic-search` |
 | Keyword + semantic hybrid | `scenarios:hybrid-search` |
 | Search with filters | `scenarios:filtered-search` |
+| Multi-field joint search | `scenarios:multi-vector-search` |
 | Knowledge Q&A, RAG | `scenarios:rag` |
 | High-precision Q&A | `scenarios:rag-with-rerank` |
 | Complex question analysis | `scenarios:multi-hop-rag` |
