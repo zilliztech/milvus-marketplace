@@ -12,7 +12,7 @@
 
 | Config Item | Recommended Value | Notes |
 |-------------|-------------------|-------|
-| Embedding Model | `BAAI/bge-large-zh-v1.5` | Chinese customer service |
+| Embedding Model | `text-embedding-3-small` | OpenAI embedding |
 | Chunk Size | 256-512 tokens | Short answers preferred |
 | LLM | GPT-3.5-turbo | Speed priority |
 | | GPT-4o-mini | Cost-effective |
@@ -24,7 +24,7 @@
 schema = client.create_schema()
 schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 schema.add_field("content", DataType.VARCHAR, max_length=65535)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
 # Knowledge classification
 schema.add_field("kb_type", DataType.VARCHAR, max_length=32)       # faq/doc/ticket
@@ -50,12 +50,19 @@ schema.add_field("helpful_count", DataType.INT32)                  # Helpful cou
 class CustomerServiceRAG:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def search_faq(self, query: str, limit: int = 3) -> list:
         """Search FAQ"""
-        embedding = self.model.encode(query).tolist()
+        embedding = self._embed(query)
         return self.client.search(
             collection_name="customer_service_kb",
             data=[embedding],
@@ -66,7 +73,7 @@ class CustomerServiceRAG:
 
     def search_docs(self, query: str, product: str = "", limit: int = 3) -> list:
         """Search product documentation"""
-        embedding = self.model.encode(query).tolist()
+        embedding = self._embed(query)
         filter_expr = 'kb_type == "doc"'
         if product:
             filter_expr += f' and product == "{product}"'
@@ -81,7 +88,7 @@ class CustomerServiceRAG:
 
     def search_similar_tickets(self, query: str, limit: int = 3) -> list:
         """Search similar tickets"""
-        embedding = self.model.encode(query).tolist()
+        embedding = self._embed(query)
         return self.client.search(
             collection_name="customer_service_kb",
             data=[embedding],
@@ -137,8 +144,8 @@ Requirements:
 
 Answer:"""
 
-        response = self.llm.chat.completions.create(
-            model="gpt-3.5-turbo",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )

@@ -22,7 +22,7 @@ schema = client.create_schema()
 schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 schema.add_field("user_id", DataType.VARCHAR, max_length=64)
 schema.add_field("content", DataType.VARCHAR, max_length=65535)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
 # Memory classification
 schema.add_field("memory_type", DataType.VARCHAR, max_length=32)   # fact/preference/conversation/task
@@ -43,7 +43,6 @@ schema.add_field("is_completed", DataType.BOOL)
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import time
 import uuid
@@ -51,9 +50,16 @@ import uuid
 class PersonalAssistantMemory:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self._init_collection()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def _init_collection(self):
         # ... collection initialization code ...
@@ -82,8 +88,8 @@ Example output:
 
 Output:"""
 
-        response = self.llm.chat.completions.create(
-            model="gpt-3.5-turbo",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
@@ -116,7 +122,7 @@ Output:"""
                 "id": str(uuid.uuid4()),
                 "user_id": user_id,
                 "content": mem["content"],
-                "embedding": self.model.encode(mem["content"]).tolist(),
+                "embedding": self._embed(mem["content"]).tolist(),
                 "memory_type": mem["type"],
                 "category": mem.get("category", "other"),
                 "created_at": int(time.time()),
@@ -133,7 +139,7 @@ Output:"""
     def search_memory(self, user_id: str, query: str, limit: int = 5,
                       memory_type: str = None) -> list:
         """Search relevant memories"""
-        embedding = self.model.encode(query).tolist()
+        embedding = self._embed(query).tolist()
 
         filter_expr = f'user_id == "{user_id}"'
         if memory_type:
@@ -228,8 +234,8 @@ Output:"""
 
         messages.append({"role": "user", "content": message})
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=messages,
             temperature=0.7
         )

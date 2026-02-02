@@ -24,18 +24,26 @@ Question → Decompose sub-questions → Retrieve sub-question 1 → Retrieve su
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 class MultiHopRAG:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.embed_model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
         self.splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
         self.collection_name = "multi_hop_rag"
         self._init_collection()
+
+    def _embed(self, texts: list) -> list:
+        """Generate embeddings using OpenAI API"""
+        if isinstance(texts, str):
+            texts = [texts]
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=texts
+        )
+        return [item.embedding for item in response.data]
 
     def _init_collection(self):
         if self.client.has_collection(self.collection_name):
@@ -45,7 +53,7 @@ class MultiHopRAG:
         schema.add_field("id", DataType.INT64, is_primary=True, auto_id=True)
         schema.add_field("text", DataType.VARCHAR, max_length=65535)
         schema.add_field("source", DataType.VARCHAR, max_length=512)
-        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
         index_params.add_index(field_name="embedding", index_type="HNSW", metric_type="COSINE",
@@ -59,13 +67,13 @@ class MultiHopRAG:
 
     def add_document(self, text: str, source: str = ""):
         chunks = self.splitter.split_text(text)
-        embeddings = self.embed_model.encode(chunks).tolist()
+        embeddings = self._embed(chunks)
         data = [{"text": c, "source": source, "embedding": e} for c, e in zip(chunks, embeddings)]
         self.client.insert(collection_name=self.collection_name, data=data)
 
     def retrieve(self, query: str, top_k: int = 5):
         """Single retrieval"""
-        embedding = self.embed_model.encode(query).tolist()
+        embedding = self._embed(query)[0]
         results = self.client.search(
             collection_name=self.collection_name,
             data=[embedding],
@@ -77,8 +85,8 @@ class MultiHopRAG:
 
     def decompose_question(self, question: str):
         """Decompose complex question into sub-questions"""
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": f"""Decompose the following complex question into 2-4 simple sub-questions for step-by-step retrieval.
@@ -95,8 +103,8 @@ Sub-questions:"""
 
     def generate_followup_query(self, original_question: str, context: str, step: int):
         """Generate follow-up retrieval query based on existing context"""
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": f"""Based on the original question and retrieved information, generate the next retrieval query.
@@ -130,8 +138,8 @@ Please generate a retrieval query to obtain missing information needed to answer
                 context_text = "\n".join([c["text"] for c in all_contexts])
 
                 # Check if we have enough information
-                check_response = self.llm.chat.completions.create(
-                    model="gpt-4",
+                check_response = self.openai.chat.completions.create(
+                    model="gpt-5-mini",
                     messages=[{
                         "role": "user",
                         "content": f"""Determine if the existing information is sufficient to answer the question.
@@ -169,8 +177,8 @@ Answer "sufficient" or "insufficient":"""
             f"[Source: {c['source']}]\n{c['text']}" for c in unique_contexts
         ])
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": f"""Answer the question based on the following references. Please synthesize information from multiple sources for a complete answer.

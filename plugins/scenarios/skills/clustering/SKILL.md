@@ -169,7 +169,7 @@ class VectorClustering:
         sample_texts = "\n".join([s["content"][:200] for s in samples])
 
         response = llm_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": f"""The following are content samples from the same category. Please describe this category's topic with a short label (2-5 words):

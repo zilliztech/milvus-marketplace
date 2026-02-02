@@ -51,7 +51,7 @@ schema.add_field("content", DataType.VARCHAR, max_length=65535)    # Text or ima
 schema.add_field("image_path", DataType.VARCHAR, max_length=512)   # Image path
 schema.add_field("source", DataType.VARCHAR, max_length=512)
 schema.add_field("page", DataType.INT32)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
 index_params.add_index("embedding", index_type="HNSW", metric_type="COSINE",
                        params={"M": 16, "efConstruction": 256})
@@ -61,7 +61,6 @@ index_params.add_index("embedding", index_type="HNSW", metric_type="COSINE",
 
 ```python
 from pymilvus import MilvusClient
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import base64
 import os
@@ -69,12 +68,19 @@ import os
 class MultimodalRAG:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.text_model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def retrieve(self, query: str, limit: int = 10) -> list:
         """Retrieve (text + images)"""
-        embedding = self.text_model.encode(query).tolist()
+        embedding = self._embed(query)
 
         results = self.client.search(
             collection_name="multimodal_rag",
@@ -121,8 +127,8 @@ class MultimodalRAG:
 
         messages[0]["content"].append({"type": "text", "text": f"\nQuestion: {question}\nAnswer:"})
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4o" if use_vision else "gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=messages,
             temperature=0.3
         )

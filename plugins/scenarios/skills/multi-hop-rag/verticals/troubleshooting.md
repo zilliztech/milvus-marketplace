@@ -24,7 +24,7 @@ A single retrieval cannot complete this chain.
 fault_schema = client.create_schema()
 fault_schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 fault_schema.add_field("symptom", DataType.VARCHAR, max_length=65535)     # Symptom description
-fault_schema.add_field("symptom_embedding", DataType.FLOAT_VECTOR, dim=1024)
+fault_schema.add_field("symptom_embedding", DataType.FLOAT_VECTOR, dim=1536)
 fault_schema.add_field("fault_code", DataType.VARCHAR, max_length=32)     # Fault code
 fault_schema.add_field("fault_name", DataType.VARCHAR, max_length=256)
 fault_schema.add_field("severity", DataType.VARCHAR, max_length=16)       # critical/high/medium/low
@@ -36,7 +36,7 @@ cause_schema = client.create_schema()
 cause_schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 cause_schema.add_field("fault_id", DataType.VARCHAR, max_length=64)       # Related fault
 cause_schema.add_field("cause_description", DataType.VARCHAR, max_length=65535)
-cause_schema.add_field("cause_embedding", DataType.FLOAT_VECTOR, dim=1024)
+cause_schema.add_field("cause_embedding", DataType.FLOAT_VECTOR, dim=1536)
 cause_schema.add_field("probability", DataType.FLOAT)                      # Occurrence probability
 cause_schema.add_field("is_root_cause", DataType.BOOL)                     # Is root cause
 
@@ -45,7 +45,7 @@ solution_schema = client.create_schema()
 solution_schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 solution_schema.add_field("cause_id", DataType.VARCHAR, max_length=64)    # Related cause
 solution_schema.add_field("steps", DataType.VARCHAR, max_length=65535)    # Resolution steps
-solution_schema.add_field("steps_embedding", DataType.FLOAT_VECTOR, dim=1024)
+solution_schema.add_field("steps_embedding", DataType.FLOAT_VECTOR, dim=1536)
 solution_schema.add_field("difficulty", DataType.VARCHAR, max_length=16)  # easy/medium/hard
 solution_schema.add_field("estimated_time", DataType.INT32)               # Estimated time (minutes)
 solution_schema.add_field("requires_expert", DataType.BOOL)               # Requires expert
@@ -55,14 +55,20 @@ solution_schema.add_field("requires_expert", DataType.BOOL)               # Requ
 
 ```python
 from pymilvus import MilvusClient
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 
 class TroubleshootingRAG:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
-        self.llm = OpenAI()
+        self.openai = OpenAI()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def diagnose(self, symptom_description: str, system: str = None) -> dict:
         """Complete diagnosis workflow"""
@@ -132,7 +138,7 @@ class TroubleshootingRAG:
 
     def _match_faults(self, symptom: str, system: str = None) -> list:
         """Match fault patterns"""
-        embedding = self.model.encode(symptom).tolist()
+        embedding = self._embed(symptom)
 
         filter_expr = ""
         if system:
@@ -200,8 +206,8 @@ Please generate:
 
 Report:"""
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
@@ -243,8 +249,8 @@ Questions should:
 
 Follow-up questions:"""
 
-        response = self.llm.chat.completions.create(
-            model="gpt-3.5-turbo",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -299,7 +305,7 @@ def add_fault_case(self, symptom: str, fault_code: str, fault_name: str,
         data=[{
             "id": fault_id,
             "symptom": symptom,
-            "symptom_embedding": self.model.encode(symptom).tolist(),
+            "symptom_embedding": self._embed(symptom).tolist(),
             "fault_code": fault_code,
             "fault_name": fault_name,
             "severity": "medium",
@@ -317,7 +323,7 @@ def add_fault_case(self, symptom: str, fault_code: str, fault_name: str,
                 "id": cause_id,
                 "fault_id": fault_id,
                 "cause_description": cause["description"],
-                "cause_embedding": self.model.encode(cause["description"]).tolist(),
+                "cause_embedding": self._embed(cause["description"]).tolist(),
                 "probability": cause.get("probability", 0.5),
                 "is_root_cause": cause.get("is_root", False)
             }]
@@ -331,7 +337,7 @@ def add_fault_case(self, symptom: str, fault_code: str, fault_name: str,
                     "id": str(uuid.uuid4()),
                     "cause_id": cause_id,
                     "steps": sol["steps"],
-                    "steps_embedding": self.model.encode(sol["steps"]).tolist(),
+                    "steps_embedding": self._embed(sol["steps"]).tolist(),
                     "difficulty": sol.get("difficulty", "medium"),
                     "estimated_time": sol.get("time", 30),
                     "requires_expert": sol.get("expert", False)

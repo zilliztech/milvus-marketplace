@@ -11,7 +11,7 @@ Legal consultation scenarios require extremely high accuracy:
 
 | Config | Recommended Value | Description |
 |--------|------------------|-------------|
-| Embedding | `BAAI/bge-large-en-v1.5` | Initial recall |
+| Embedding | `text-embedding-3-small` | OpenAI embedding |
 | Reranker | `BAAI/bge-reranker-large` | Precision ranking |
 | | `Cohere rerank-multilingual-v3.0` | Multilingual |
 | Initial Recall | 30-50 | Recall more for reranking |
@@ -24,7 +24,7 @@ Legal consultation scenarios require extremely high accuracy:
 # Legal knowledge base structure
 schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
 schema.add_field("content", DataType.VARCHAR, max_length=65535)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
 # Legal specific fields
 schema.add_field("doc_type", DataType.VARCHAR, max_length=32)       # law/regulation/case/opinion
@@ -37,20 +37,27 @@ schema.add_field("source", DataType.VARCHAR, max_length=256)        # Source (la
 ## Implementation
 
 ```python
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import CrossEncoder
 from pymilvus import MilvusClient
 from openai import OpenAI
 
 class LegalRAG:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.embedder = SentenceTransformer('BAAI/bge-large-en-v1.5')
+        self.openai = OpenAI()
         self.reranker = CrossEncoder('BAAI/bge-reranker-large')
-        self.llm = OpenAI()
+
+    def _embed(self, text: str) -> list:
+        """Generate embedding using OpenAI API"""
+        response = self.openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def retrieve(self, query: str, law_category: str = None, limit: int = 30) -> list:
         """Initial recall"""
-        embedding = self.embedder.encode(query).tolist()
+        embedding = self._embed(query)
 
         filter_expr = 'effectiveness == "valid"'  # Only search valid laws
         if law_category:
@@ -120,8 +127,8 @@ Requirements:
 
 Answer:"""
 
-        response = self.llm.chat.completions.create(
-            model="gpt-4",
+        response = self.openai.chat.completions.create(
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2  # Legal answers need low temperature for accuracy
         )
