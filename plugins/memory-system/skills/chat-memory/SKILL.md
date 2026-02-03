@@ -1,31 +1,129 @@
 ---
 name: chat-memory
-description: "Use when user needs long-term memory for chatbots. Triggers on: chat memory, conversation history, long-term memory, chatbot memory, memory retrieval, persistent memory."
+description: "Use when user needs long-term memory for chatbots. Triggers on: chat memory, conversation history, long-term memory, chatbot memory, memory retrieval, persistent memory, remember conversations."
 ---
 
 # Chat Memory
 
-Implement long-term memory for chatbots, retrieving relevant conversation history across sessions.
+Implement long-term memory for chatbots — remember and retrieve relevant conversation history across sessions.
 
-## Use Cases
+## When to Activate
 
-- Long-term conversation assistants (remember user preferences)
-- Customer service systems (remember history issues)
-- Game NPCs (remember player interactions)
-- Personal AI butler
+Activate this skill when:
+- User needs **persistent conversation memory** for a chatbot
+- User mentions "remember", "long-term memory", "conversation history"
+- User wants a chatbot that **recalls past interactions**
+- User needs to **personalize responses** based on history
 
-## Architecture
+**Do NOT activate** when:
+- User only needs in-session context → use standard context window
+- User needs document search → use `rag-toolkit:rag`
+- User needs user recommendations → use `rec-system`
+
+## Interactive Flow
+
+### Step 1: Understand Memory Scope
+
+"What should the chatbot remember?"
+
+A) **User preferences** (favorite topics, communication style)
+   - Long retention, low decay
+   - e.g., "User prefers technical explanations"
+
+B) **Conversation context** (discussed topics, mentioned names)
+   - Medium retention
+   - e.g., "User mentioned they're working on project X"
+
+C) **Factual information** (user-provided facts)
+   - Variable retention
+   - e.g., "User's dog is named Max"
+
+D) **All of the above**
+
+Which types matter most?
+
+### Step 2: Retention Strategy
+
+"How long should memories last?"
+
+| Type | Retention | Decay |
+|------|-----------|-------|
+| **Preferences** | Permanent | None |
+| **Recent context** | Days-weeks | 5% per day |
+| **Old context** | Compressed | Summarized |
+
+### Step 3: Confirm Configuration
+
+"Based on your requirements:
+
+- **Memory types**: All (preferences, context, facts)
+- **Retrieval**: Semantic similarity + time decay
+- **Compression**: Auto-summarize after 30 days
+
+Proceed? (yes / adjust [what])"
+
+## Core Concepts
+
+### Mental Model: Human Memory
+
+Think of chat memory like **human memory**:
+- **Working memory**: Current conversation (context window)
+- **Long-term memory**: Past conversations (vector database)
+- **Recall**: Retrieve relevant memories when needed
 
 ```
-User message → Retrieve relevant history → Combine context → LLM generates → Store new conversation
+┌─────────────────────────────────────────────────────────┐
+│                   Chat Memory System                     │
+│                                                          │
+│  User Message: "How's my Python project going?"          │
+│                         │                                │
+│       ┌─────────────────┼─────────────────┐             │
+│       │                 │                 │             │
+│       ▼                 ▼                 ▼             │
+│  ┌─────────┐    ┌─────────────┐   ┌─────────────┐      │
+│  │ Recent  │    │   Memory    │   │   Memory    │      │
+│  │ Context │    │  Retrieval  │   │   Retrieval │      │
+│  │(session)│    │ (semantic)  │   │   (keyword) │      │
+│  └────┬────┘    └──────┬──────┘   └──────┬──────┘      │
+│       │                │                 │              │
+│       ▼                ▼                 ▼              │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │              Combined Context                     │  │
+│  │                                                   │  │
+│  │  Recent: "We discussed Python yesterday"         │  │
+│  │  Memory: "User started Python project 2 weeks    │  │
+│  │          ago, learning Flask for web app"        │  │
+│  │  Memory: "User mentioned deadline is next month" │  │
+│  └──────────────────────┬───────────────────────────┘  │
+│                         │                               │
+│                         ▼                               │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │                   LLM Response                    │  │
+│  │  "Based on our previous conversations, I know    │  │
+│  │   you're building a Flask web app. Since your    │  │
+│  │   deadline is next month, let me help you..."    │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                          │
+│  [Store: "User asked about Python project progress"]    │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Complete Implementation
+### Memory vs RAG
+
+| Aspect | Chat Memory | RAG |
+|--------|-------------|-----|
+| **Source** | Past conversations | Documents |
+| **Updates** | Every conversation | Batch indexing |
+| **Personal** | Per-user | Shared |
+| **Decay** | Time-based | Usually none |
+
+## Implementation
 
 ```python
 from pymilvus import MilvusClient, DataType
 from openai import OpenAI
 import time
+import uuid
 
 class ChatMemory:
     def __init__(self, uri: str = "./milvus.db"):
@@ -35,7 +133,7 @@ class ChatMemory:
         self._init_collection()
 
     def _embed(self, text: str) -> list:
-        """Generate embedding using OpenAI API"""
+        """Generate embedding"""
         response = self.openai.embeddings.create(
             model="text-embedding-3-small",
             input=[text]
@@ -53,6 +151,7 @@ class ChatMemory:
         schema.add_field("content", DataType.VARCHAR, max_length=65535)
         schema.add_field("timestamp", DataType.INT64)
         schema.add_field("session_id", DataType.VARCHAR, max_length=64)
+        schema.add_field("importance", DataType.FLOAT)  # 0-1, for prioritization
         schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
 
         index_params = self.client.prepare_index_params()
@@ -66,37 +165,36 @@ class ChatMemory:
             index_params=index_params
         )
 
-    def _generate_id(self) -> str:
-        import uuid
-        return str(uuid.uuid4())
-
-    def store_message(self, user_id: str, role: str, content: str, session_id: str = ""):
-        """Store message"""
+    def store_message(self, user_id: str, role: str, content: str,
+                      session_id: str = "", importance: float = 0.5):
+        """Store a message in memory"""
         embedding = self._embed(content)
+
         self.client.insert(
             collection_name=self.collection_name,
             data=[{
-                "id": self._generate_id(),
+                "id": str(uuid.uuid4()),
                 "user_id": user_id,
                 "role": role,
                 "content": content,
                 "timestamp": int(time.time()),
                 "session_id": session_id,
+                "importance": importance,
                 "embedding": embedding
             }]
         )
 
-    def retrieve_relevant_history(self, user_id: str, query: str, limit: int = 10,
-                                   time_decay: bool = True) -> list:
-        """Retrieve relevant history"""
+    def retrieve_relevant(self, user_id: str, query: str, limit: int = 10,
+                          apply_decay: bool = True) -> list:
+        """Retrieve relevant memories for a query"""
         embedding = self._embed(query)
 
         results = self.client.search(
             collection_name=self.collection_name,
             data=[embedding],
             filter=f'user_id == "{user_id}"',
-            limit=limit * 2,  # Get more for time decay
-            output_fields=["role", "content", "timestamp", "session_id"]
+            limit=limit * 2,  # Get extra for decay filtering
+            output_fields=["role", "content", "timestamp", "importance"]
         )
 
         memories = []
@@ -105,15 +203,15 @@ class ChatMemory:
                 "role": hit["entity"]["role"],
                 "content": hit["entity"]["content"],
                 "timestamp": hit["entity"]["timestamp"],
-                "session_id": hit["entity"]["session_id"],
+                "importance": hit["entity"]["importance"],
                 "similarity": hit["distance"]
             }
 
-            # Time decay
-            if time_decay:
+            # Apply time decay
+            if apply_decay:
                 days_ago = (time.time() - memory["timestamp"]) / 86400
                 decay = 0.95 ** days_ago  # 5% decay per day
-                memory["final_score"] = memory["similarity"] * decay
+                memory["final_score"] = memory["similarity"] * decay * (0.5 + memory["importance"] * 0.5)
             else:
                 memory["final_score"] = memory["similarity"]
 
@@ -123,8 +221,8 @@ class ChatMemory:
         memories.sort(key=lambda x: x["final_score"], reverse=True)
         return memories[:limit]
 
-    def get_recent_messages(self, user_id: str, session_id: str = "", limit: int = 10) -> list:
-        """Get recent messages"""
+    def get_recent(self, user_id: str, session_id: str = "", limit: int = 10) -> list:
+        """Get recent messages (for current session context)"""
         filter_expr = f'user_id == "{user_id}"'
         if session_id:
             filter_expr += f' and session_id == "{session_id}"'
@@ -136,102 +234,90 @@ class ChatMemory:
             limit=limit
         )
 
-        # Sort by time
         results.sort(key=lambda x: x["timestamp"])
         return results
 
-    def chat(self, user_id: str, message: str, session_id: str = "", use_memory: bool = True) -> str:
-        """Chat (with memory)"""
-        messages = [{"role": "system", "content": """You are an assistant with long-term memory.
-You can remember previous conversations with the user and reference these memories when appropriate.
-If the user mentions a previously discussed topic, try to connect to the earlier conversation."""}]
+    def chat(self, user_id: str, message: str, session_id: str = "") -> str:
+        """Chat with memory-enhanced response"""
+        # Build context
+        messages = [{
+            "role": "system",
+            "content": """You are a helpful assistant with long-term memory.
+You can recall previous conversations and use them to provide personalized responses.
+When relevant, reference past discussions naturally."""
+        }]
 
-        # 1. Retrieve relevant history
-        if use_memory:
-            relevant_history = self.retrieve_relevant_history(user_id, message, limit=5)
-            if relevant_history:
-                memory_text = "\n".join([
-                    f"[{m['role']}]: {m['content']}" for m in relevant_history
-                ])
-                messages.append({
-                    "role": "system",
-                    "content": f"Here are relevant previous conversations with the user:\n{memory_text}"
-                })
+        # Retrieve relevant memories
+        memories = self.retrieve_relevant(user_id, message, limit=5)
+        if memories:
+            memory_text = "\n".join([
+                f"[Past - {m['role']}]: {m['content']}"
+                for m in memories
+            ])
+            messages.append({
+                "role": "system",
+                "content": f"Relevant past conversations:\n{memory_text}"
+            })
 
-        # 2. Get recent messages from current session
-        recent = self.get_recent_messages(user_id, session_id, limit=5)
+        # Add recent session context
+        recent = self.get_recent(user_id, session_id, limit=5)
         for msg in recent:
             messages.append({"role": msg["role"], "content": msg["content"]})
 
-        # 3. Add current message
+        # Add current message
         messages.append({"role": "user", "content": message})
 
-        # 4. Generate response
+        # Generate response
         response = self.openai.chat.completions.create(
-            model="gpt-5-mini",
+            model="gpt-4o",
             messages=messages,
             temperature=0.7
         )
         assistant_message = response.choices[0].message.content
 
-        # 5. Store conversation
+        # Store conversation
         self.store_message(user_id, "user", message, session_id)
         self.store_message(user_id, "assistant", assistant_message, session_id)
 
         return assistant_message
 
-    def summarize_user_profile(self, user_id: str) -> str:
-        """Summarize user profile"""
-        # Get recent 100 conversations
+    def mark_important(self, user_id: str, content_snippet: str):
+        """Mark a memory as important (no decay)"""
+        # Find the memory
         results = self.client.query(
             collection_name=self.collection_name,
             filter=f'user_id == "{user_id}"',
-            output_fields=["role", "content"],
+            output_fields=["id", "content", "importance"],
             limit=100
         )
 
-        if not results:
-            return "Not enough conversation data yet"
-
-        user_messages = [r["content"] for r in results if r["role"] == "user"]
-        sample_text = "\n".join(user_messages[-20:])  # Last 20
-
-        response = self.openai.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[{
-                "role": "user",
-                "content": f"""Based on the following user conversation history, summarize the user's characteristics, interests, and preferences:
-
-{sample_text}
-
-User profile:"""
-            }],
-            temperature=0
-        )
-        return response.choices[0].message.content
+        for r in results:
+            if content_snippet in r["content"]:
+                self.client.upsert(
+                    collection_name=self.collection_name,
+                    data=[{"id": r["id"], "importance": 1.0}]
+                )
+                return True
+        return False
 
 # Usage
 memory = ChatMemory()
 
-# Chat
 user_id = "user001"
-session_id = "session001"
+session_id = "session_" + str(int(time.time()))
 
-# Day 1
-response = memory.chat(user_id, "I'm learning Python lately", session_id)
-print(f"Assistant: {response}")
+# Day 1 conversation
+response = memory.chat(user_id, "I'm learning Python for a web project", session_id)
+print(f"Bot: {response}")
 
-response = memory.chat(user_id, "Any good learning resources to recommend?", session_id)
-print(f"Assistant: {response}")
+response = memory.chat(user_id, "Any Flask tutorials you recommend?", session_id)
+print(f"Bot: {response}")
 
-# Few days later... new session
-session_id = "session002"
-response = memory.chat(user_id, "I want to learn something new")  # Will retrieve earlier Python learning memory
-print(f"Assistant: {response}")
-
-# View user profile
-profile = memory.summarize_user_profile(user_id)
-print(f"User profile: {profile}")
+# Days later, new session
+new_session = "session_" + str(int(time.time()))
+response = memory.chat(user_id, "How should I continue my learning?", new_session)
+# Bot will recall the Python/Flask context
+print(f"Bot: {response}")
 ```
 
 ## Memory Strategies
@@ -239,47 +325,102 @@ print(f"User profile: {profile}")
 ### 1. Sliding Window + Retrieval
 
 ```python
-# Short-term: Recent N messages (sliding window)
-# Long-term: Relevance retrieval
-recent = self.get_recent_messages(limit=5)      # Short-term
-relevant = self.retrieve_relevant_history(limit=5)  # Long-term
+# Combine recent context (window) with relevant memories (retrieval)
+recent_messages = get_recent(limit=5)  # Last 5 messages
+relevant_memories = retrieve_relevant(query, limit=5)  # Top 5 relevant
+
+context = recent_messages + relevant_memories
 ```
 
 ### 2. Memory Compression
 
 ```python
-def compress_memories(self, user_id: str):
-    """Periodically compress old memories"""
-    old_messages = self.get_messages_before(user_id, days_ago=30)
+def compress_old_memories(self, user_id: str, days_threshold: int = 30):
+    """Summarize and compress old memories"""
+    cutoff = int(time.time()) - (days_threshold * 86400)
 
-    # Summarize with LLM
-    summary = self.llm.summarize(old_messages)
+    old_memories = self.client.query(
+        collection_name=self.collection_name,
+        filter=f'user_id == "{user_id}" and timestamp < {cutoff}',
+        output_fields=["content"],
+        limit=100
+    )
 
-    # Store summary, delete originals
-    self.store_summary(user_id, summary)
-    self.delete_old_messages(user_id, days_ago=30)
+    if len(old_memories) > 10:
+        # Summarize with LLM
+        content = "\n".join([m["content"] for m in old_memories])
+        summary = self.llm.summarize(content)
+
+        # Store summary, delete originals
+        self.store_message(user_id, "summary", summary, importance=0.8)
+        self.delete_old_memories(user_id, cutoff)
 ```
 
-### 3. Importance Marking
+### 3. Importance Detection
 
 ```python
-# Mark important memories (no decay)
-def mark_important(self, memory_id: str):
-    self.client.upsert(
-        collection_name=self.collection_name,
-        data=[{"id": memory_id, "important": True}]
-    )
+def detect_importance(self, content: str) -> float:
+    """Automatically detect if content is important"""
+    # Keywords indicating important info
+    important_keywords = ["always", "never", "prefer", "hate", "love",
+                          "my name", "birthday", "deadline", "important"]
+
+    content_lower = content.lower()
+    matches = sum(1 for kw in important_keywords if kw in content_lower)
+
+    return min(0.5 + (matches * 0.1), 1.0)
 ```
 
-## Vertical Applications
+## Common Pitfalls
 
-See `verticals/` directory for detailed guides:
-- `personal-assistant.md` - Personal assistant
-- `customer-service.md` - Customer service memory
-- `game-npc.md` - Game NPC
+### ❌ Pitfall 1: Retrieving Irrelevant Memories
 
-## Related Tools
+**Problem**: Bot mentions unrelated past conversations
 
-- RAG: `rag-toolkit:rag`
-- Vectorization: `core:embedding`
-- Indexing: `core:indexing`
+**Fix**: Increase similarity threshold
+```python
+memories = [m for m in memories if m["similarity"] > 0.7]
+```
+
+### ❌ Pitfall 2: Memory Overload
+
+**Problem**: Too many memories in context, confuses LLM
+
+**Fix**: Limit memories, summarize if needed
+```python
+memories = retrieve_relevant(query, limit=3)  # Only top 3
+```
+
+### ❌ Pitfall 3: Privacy Leaks
+
+**Problem**: Memory from one user leaks to another
+
+**Fix**: Always filter by user_id
+```python
+filter=f'user_id == "{user_id}"'  # ALWAYS include
+```
+
+### ❌ Pitfall 4: Stale Context
+
+**Problem**: Bot keeps mentioning outdated information
+
+**Fix**: Apply time decay
+```python
+decay = 0.95 ** days_ago
+final_score = similarity * decay
+```
+
+## When to Level Up
+
+| Need | Upgrade To |
+|------|------------|
+| Search documents | `rag-toolkit:rag` |
+| Multi-user shared knowledge | Combine with RAG |
+| Real-time streaming | Add message queue |
+| Complex memory graphs | Consider Neo4j |
+
+## References
+
+- RAG for documents: `rag-toolkit:rag`
+- Embedding models: `core:embedding`
+- Vertical guides: `verticals/`

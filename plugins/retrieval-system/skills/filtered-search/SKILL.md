@@ -1,26 +1,131 @@
 ---
 name: filtered-search
-description: "Use when user needs vector search with scalar field filtering. Triggers on: filtered search, filter by category, metadata filter, faceted search, conditional search, attribute filtering."
+description: "Use when user needs vector search with scalar field filtering. Triggers on: filtered search, filter by category, metadata filter, faceted search, conditional search, attribute filtering, search with constraints."
 ---
 
-# Filtered Search - Vector Search with Filtering
+# Filtered Search
 
-Vector semantic search + scalar field filtering, filter before search or simultaneously.
+Vector semantic search combined with scalar field filtering — find semantically relevant results that also match specific criteria.
 
-## Use Cases
+## When to Activate
 
-- E-commerce: Search after filtering by price/category/brand
-- Recruitment: Match after filtering by location/salary/experience
-- Real Estate: Recommend after filtering by area/price/layout
-- Content Platforms: Search after filtering by time/tags/author
+Activate this skill when:
+- User needs to **constrain search results** by attributes (category, price, date, etc.)
+- User mentions "filter by", "only show", "within range", "where category is"
+- User has **structured metadata** alongside text content
+- User wants faceted search like e-commerce product filtering
 
-## Architecture
+**Do NOT activate** when:
+- User only needs pure semantic search → use `semantic-search`
+- User needs keyword + semantic fusion → use `hybrid-search`
+- User has no metadata fields to filter on
+
+## Interactive Flow
+
+### Step 1: Identify Filter Fields
+
+"What attributes do you need to filter by?"
+
+| Common Filter Types | Examples |
+|---------------------|----------|
+| **Category/Type** | category = "electronics", status = "active" |
+| **Numeric Range** | price between 100-500, rating >= 4.0 |
+| **Date/Time** | created_at > "2024-01-01", within last 7 days |
+| **Tags/Arrays** | tags contains "new", skills includes "python" |
+| **Boolean** | in_stock = true, is_verified = true |
+
+Which filter types do you need? (can select multiple)
+
+### Step 2: Understand Filter Cardinality
+
+"For each filter field, how many unique values exist?"
+
+| Cardinality | Example | Index Strategy |
+|-------------|---------|----------------|
+| Low (< 100) | category, status | TRIE index |
+| Medium (100-10K) | brand, city | INVERTED index |
+| High (> 10K) | user_id, timestamp | STL_SORT or no index |
+
+This affects index design and query performance.
+
+### Step 3: Confirm Schema Design
+
+"Based on your requirements, here's the proposed schema:
+
+```python
+# Your schema
+schema.add_field('category', DataType.VARCHAR, max_length=256)  # TRIE index
+schema.add_field('price', DataType.FLOAT)  # STL_SORT index
+schema.add_field('tags', DataType.ARRAY, element_type=DataType.VARCHAR)  # INVERTED
+```
+
+Proceed? (yes / adjust [what])"
+
+## Core Concepts
+
+### Mental Model: Department Store
+
+Think of filtered search as a **department store with sections**:
+- Pure semantic search = "Find me something comfortable" (searches everywhere)
+- Filtered search = "Find me something comfortable **in the shoe department, under $100**"
 
 ```
-Query + Filter Conditions → Scalar Filtering → Vector Search → Results
+┌─────────────────────────────────────────────────────────┐
+│                    Filtered Search                       │
+│                                                          │
+│  Query: "comfortable work shoes"                         │
+│  Filters: category="shoes", price<=100                   │
+│                                                          │
+│           ┌─────────────────────────────┐               │
+│           │     Step 1: Filter First     │               │
+│           │                              │               │
+│           │  Full Collection (1M items)  │               │
+│           │           │                  │               │
+│           │           ▼                  │               │
+│           │  category="shoes" (50K)      │               │
+│           │           │                  │               │
+│           │           ▼                  │               │
+│           │  price <= 100 (10K)          │               │
+│           └──────────┬──────────────────┘               │
+│                      │                                   │
+│                      ▼                                   │
+│           ┌─────────────────────────────┐               │
+│           │  Step 2: Vector Search       │               │
+│           │  on 10K filtered items       │               │
+│           │                              │               │
+│           │  → Semantically match        │               │
+│           │    "comfortable work shoes"  │               │
+│           └──────────┬──────────────────┘               │
+│                      │                                   │
+│                      ▼                                   │
+│           Top 10 relevant results                        │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Complete Implementation
+### Filter vs Post-Filter
+
+| Approach | When Applied | Performance |
+|----------|--------------|-------------|
+| **Pre-filter** | Before vector search | ✅ Efficient (searches fewer vectors) |
+| **Post-filter** | After vector search | ⚠️ May miss results if limit is small |
+
+Milvus uses **pre-filtering** by default — filters are applied before ANN search.
+
+## Why Filtered Search
+
+| Scenario | Without Filtering | With Filtering |
+|----------|-------------------|----------------|
+| E-commerce: "laptop under $1000" | Returns $2000 laptops too | Only budget options |
+| Job search: "Python developer in NYC" | Returns SF jobs too | Location-specific |
+| Content: "AI news from this week" | Returns old articles | Recent only |
+
+### When NOT to Use Filtering
+
+- **Filter reduces results too much**: If filter leaves < 100 items, vector search adds little value
+- **Filter is the only criteria**: Just use scalar query, no need for vectors
+- **Dynamic filters change frequently**: Consider separate indexes
+
+## Implementation
 
 ```python
 from pymilvus import MilvusClient, DataType
@@ -130,47 +235,129 @@ results = search.search(
 ## Filter Expression Syntax
 
 ```python
-# Equals
-'category == "electronics"'
-
-# Comparison
-'price >= 100'
-'price < 1000'
-
-# Range
-'price >= 100 and price <= 1000'
-
-# IN
-'category in ["phones", "laptops", "tablets"]'
-
-# Array contains
-'array_contains(tags, "new")'
-
-# Combination
-'category == "phones" and price >= 1000 and array_contains(tags, "5G")'
+# Comparison operators
+'price == 100'              # Equals
+'price != 100'              # Not equals
+'price > 100'               # Greater than
+'price >= 100'              # Greater or equal
+'price < 100'               # Less than
+'price <= 100'              # Less or equal
 
 # String matching
-'text like "iPhone%"'  # Prefix match
+'category == "electronics"' # Exact match
+'title like "iPhone%"'      # Prefix match
+'title like "%Pro%"'        # Contains
+
+# IN operator
+'category in ["phones", "laptops", "tablets"]'
+
+# Array operations
+'array_contains(tags, "new")'           # Array contains value
+'array_contains_all(tags, ["a", "b"])'  # Contains all
+'array_contains_any(tags, ["a", "b"])'  # Contains any
+
+# Logical operators
+'price >= 100 and price <= 1000'        # AND
+'category == "phones" or category == "tablets"'  # OR
+'not (price > 1000)'                     # NOT
+
+# Complex expression
+'category == "phones" and price >= 500 and array_contains(tags, "5G")'
 ```
 
-## Index Strategies
+## Index Strategy Guide
 
-| Field Type | Index Type | Use Case |
-|-----------|-----------|----------|
-| VARCHAR (low cardinality) | TRIE | Categories, status |
-| VARCHAR (high cardinality) | INVERTED | Tags, keywords |
-| INT/FLOAT | STL_SORT | Numeric range queries |
-| ARRAY | INVERTED | Array contains queries |
+| Field Type | Cardinality | Index Type | Use Case |
+|-----------|-------------|------------|----------|
+| VARCHAR | Low (< 100) | **TRIE** | Category, status, type |
+| VARCHAR | High | **INVERTED** | Tags, keywords |
+| INT/FLOAT | Any | **STL_SORT** | Numeric ranges |
+| ARRAY | Any | **INVERTED** | Array contains |
+| BOOL | 2 | None needed | Boolean flags |
 
-## Vertical Applications
+### Index Creation Example
 
-See detailed guides in `verticals/` directory:
-- `ecommerce.md` - E-commerce (category/price/brand)
-- `recruitment.md` - Recruitment (location/salary/experience)
-- `real-estate.md` - Real Estate (area/price/layout)
+```python
+index_params = self.client.prepare_index_params()
 
-## Related Tools
+# Vector index (required)
+index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
 
-- Data processing orchestration: `core:ray`
-- Vectorization: `core:embedding`
-- Indexing: `core:indexing`
+# Scalar indexes (optional but recommended for frequently filtered fields)
+index_params.add_index("category", index_type="TRIE")      # Low cardinality string
+index_params.add_index("price", index_type="STL_SORT")     # Numeric range
+index_params.add_index("tags", index_type="INVERTED")      # Array contains
+```
+
+## Common Pitfalls
+
+### ❌ Pitfall 1: Over-Filtering
+
+**Problem**: Filter returns 0 results
+
+**Why**: Filter conditions too restrictive
+
+**Fix**: Check filter cardinality before searching
+```python
+# First check how many items match the filter
+count = client.query(
+    collection_name="products",
+    filter='category == "rare_category" and price < 10',
+    output_fields=["count(*)"]
+)
+# If count is 0, relax filters
+```
+
+### ❌ Pitfall 2: Missing Scalar Index
+
+**Problem**: Filtered search is slow
+
+**Why**: No index on frequently filtered field
+
+**Fix**: Add appropriate index type
+```python
+# Add index for the filtered field
+index_params.add_index("category", index_type="TRIE")
+```
+
+### ❌ Pitfall 3: Wrong Index Type
+
+**Problem**: Index doesn't improve performance
+
+**Why**: Using TRIE for high-cardinality field
+
+**Fix**: Match index type to cardinality
+- Low cardinality → TRIE
+- High cardinality → INVERTED
+- Numeric range → STL_SORT
+
+### ❌ Pitfall 4: SQL Injection in Filters
+
+**Problem**: User input directly in filter expression
+
+**Why**: Security vulnerability
+
+**Fix**: Validate and sanitize user input
+```python
+# BAD - vulnerable to injection
+filter_expr = f'category == "{user_input}"'
+
+# GOOD - validate input
+VALID_CATEGORIES = ["phones", "laptops", "tablets"]
+if user_input in VALID_CATEGORIES:
+    filter_expr = f'category == "{user_input}"'
+```
+
+## When to Level Up
+
+| Need | Upgrade To |
+|------|------------|
+| Keyword matching + filters | `hybrid-search` with filters |
+| Multiple text fields | `multi-vector-search` with filters |
+| Complex multi-hop queries | `agentic-rag` with tool-based filtering |
+
+## References
+
+- Filter expression syntax: `references/filter-optimization.md`
+- Index configuration: `core:indexing`
+- Vertical guides: `verticals/`

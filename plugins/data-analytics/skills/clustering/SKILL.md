@@ -1,27 +1,121 @@
 ---
 name: clustering
-description: "Use when user needs to group similar items together. Triggers on: clustering, group similar, topic modeling, user segmentation, categorization, automatic classification."
+description: "Use when user needs to group similar items together. Triggers on: clustering, group similar, topic modeling, user segmentation, categorization, automatic classification, unsupervised grouping."
 ---
 
 # Clustering
 
-Automatically group similar content into clusters.
+Automatically group similar content into clusters using vector embeddings — discover hidden patterns and categories in your data.
 
-## Use Cases
+## When to Activate
 
-- Topic/theme clustering
-- User segmentation
-- Review sentiment clustering
-- Anomaly pattern discovery
-- Automatic category labeling
+Activate this skill when:
+- User wants to **group similar items** automatically
+- User mentions "clustering", "segmentation", "topic modeling"
+- User needs to **discover categories** in unlabeled data
+- User wants to **organize content** without predefined labels
 
-## Architecture
+**Do NOT activate** when:
+- User needs to find duplicates → use `duplicate-detection`
+- User has predefined categories → use `filtered-search`
+- User needs recommendations → use `rec-system`
+
+## Interactive Flow
+
+### Step 1: Understand Clustering Goal
+
+"What do you want to achieve with clustering?"
+
+A) **Topic discovery** (documents, articles)
+   - Find themes in text corpus
+   - Group by subject matter
+
+B) **User segmentation** (behavioral data)
+   - Group users by behavior
+   - Marketing personas
+
+C) **Anomaly detection**
+   - Find outliers
+   - Fraud detection
+
+D) **Content organization**
+   - Auto-categorization
+   - Product grouping
+
+Which describes your goal? (A/B/C/D)
+
+### Step 2: Determine Number of Clusters
+
+"Do you know how many clusters you want?"
+
+| If You Know | Algorithm | Configuration |
+|-------------|-----------|---------------|
+| **Yes, exactly N** | KMeans | `n_clusters=N` |
+| **Roughly N** | KMeans + silhouette | Find best K around N |
+| **No idea** | DBSCAN/HDBSCAN | Auto-discovers |
+
+### Step 3: Confirm Configuration
+
+"Based on your requirements:
+
+- **Algorithm**: KMeans (you specified 5 clusters)
+- **Embedding**: BGE-large
+- **Metric**: COSINE similarity
+
+Proceed? (yes / adjust [what])"
+
+## Core Concepts
+
+### Mental Model: Sorting a Library
+
+Think of clustering as **a librarian organizing books without labels**:
+- Look at each book's content
+- Group similar topics together
+- Name each section after grouping
 
 ```
-Data → Vectorize → Clustering algorithm → Cluster labels → Analysis/Naming
+┌─────────────────────────────────────────────────────────┐
+│                    Clustering Pipeline                   │
+│                                                          │
+│  Unlabeled Documents                                     │
+│  ┌─────┬─────┬─────┬─────┬─────┐                       │
+│  │Doc1 │Doc2 │Doc3 │Doc4 │Doc5 │ ...                   │
+│  └──┬──┴──┬──┴──┬──┴──┬──┴──┬──┘                       │
+│     │     │     │     │     │                           │
+│     ▼     ▼     ▼     ▼     ▼                           │
+│  ┌─────────────────────────────┐                        │
+│  │    Embedding Model (BGE)     │                        │
+│  │    Text → Vector             │                        │
+│  └──────────────┬──────────────┘                        │
+│                 │                                        │
+│                 ▼                                        │
+│  [vec1] [vec2] [vec3] [vec4] [vec5] ...                 │
+│                 │                                        │
+│                 ▼                                        │
+│  ┌─────────────────────────────┐                        │
+│  │   Clustering Algorithm       │                        │
+│  │   (KMeans / DBSCAN)         │                        │
+│  └──────────────┬──────────────┘                        │
+│                 │                                        │
+│     ┌───────────┼───────────┐                           │
+│     │           │           │                           │
+│     ▼           ▼           ▼                           │
+│  ┌─────┐    ┌─────┐    ┌─────┐                         │
+│  │ C1  │    │ C2  │    │ C3  │  (Clusters)             │
+│  │Tech │    │Sport│    │Food │  (Named by LLM)         │
+│  └─────┘    └─────┘    └─────┘                         │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Complete Implementation
+### KMeans vs DBSCAN
+
+| Algorithm | Pros | Cons | Best For |
+|-----------|------|------|----------|
+| **KMeans** | Fast, predictable clusters | Must specify K | Known cluster count |
+| **DBSCAN** | Auto-discovers K, finds outliers | Sensitive to eps | Unknown clusters |
+| **HDBSCAN** | More robust than DBSCAN | Slower | Large datasets |
+
+## Implementation
 
 ```python
 from pymilvus import MilvusClient, DataType
@@ -32,7 +126,7 @@ import numpy as np
 class VectorClustering:
     def __init__(self, uri: str = "./milvus.db"):
         self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-zh-v1.5')
+        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
         self.collection_name = "clustering"
         self._init_collection()
 
@@ -70,8 +164,7 @@ class VectorClustering:
         self.client.insert(collection_name=self.collection_name, data=data)
 
     def cluster_kmeans(self, n_clusters: int = 10) -> dict:
-        """KMeans clustering"""
-        # Get all data
+        """KMeans clustering - use when you know the number of clusters"""
         all_data = self.client.query(
             collection_name=self.collection_name,
             filter="",
@@ -80,24 +173,22 @@ class VectorClustering:
         )
 
         if len(all_data) < n_clusters:
-            raise ValueError(f"Data count {len(all_data)} is less than cluster count {n_clusters}")
+            raise ValueError(f"Data count {len(all_data)} < cluster count {n_clusters}")
 
-        # Extract embeddings
         ids = [item["id"] for item in all_data]
         embeddings = np.array([item["embedding"] for item in all_data])
 
-        # KMeans clustering
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         labels = kmeans.fit_predict(embeddings)
 
-        # Update cluster labels
+        # Update cluster labels in Milvus
         for item_id, label in zip(ids, labels):
             self.client.upsert(
                 collection_name=self.collection_name,
                 data=[{"id": item_id, "cluster_id": int(label)}]
             )
 
-        # Return clustering results
+        # Organize results
         clusters = {}
         for item, label in zip(all_data, labels):
             label = int(label)
@@ -112,7 +203,7 @@ class VectorClustering:
         }
 
     def cluster_dbscan(self, eps: float = 0.3, min_samples: int = 5) -> dict:
-        """DBSCAN clustering (auto-discovers cluster count)"""
+        """DBSCAN clustering - use when cluster count is unknown"""
         all_data = self.client.query(
             collection_name=self.collection_name,
             filter="",
@@ -122,7 +213,6 @@ class VectorClustering:
 
         embeddings = np.array([item["embedding"] for item in all_data])
 
-        # DBSCAN (density-based)
         dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
         labels = dbscan.fit_predict(embeddings)
 
@@ -149,40 +239,33 @@ class VectorClustering:
             "n_clusters": len(clusters),
             "clusters": clusters,
             "cluster_sizes": {k: len(v) for k, v in clusters.items()},
-            "noise_count": noise_count
+            "noise_count": noise_count  # Outliers
         }
 
-    def get_cluster(self, cluster_id: int, limit: int = 100) -> list:
-        """Get content of a cluster"""
-        results = self.client.query(
+    def find_optimal_k(self, min_k: int = 2, max_k: int = 20) -> int:
+        """Find optimal K using silhouette score"""
+        from sklearn.metrics import silhouette_score
+
+        all_data = self.client.query(
             collection_name=self.collection_name,
-            filter=f'cluster_id == {cluster_id}',
-            output_fields=["id", "content"],
-            limit=limit
+            filter="",
+            output_fields=["embedding"],
+            limit=100000
         )
-        return results
+        embeddings = np.array([item["embedding"] for item in all_data])
 
-    def name_cluster(self, cluster_id: int, llm_client) -> str:
-        """Name cluster using LLM"""
-        samples = self.get_cluster(cluster_id, limit=10)
-        sample_texts = "\n".join([s["content"][:200] for s in samples])
+        scores = []
+        for k in range(min_k, min(max_k + 1, len(embeddings))):
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(embeddings)
+            score = silhouette_score(embeddings, labels)
+            scores.append((k, score))
 
-        response = llm_client.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[{
-                "role": "user",
-                "content": f"""The following are content samples from the same category. Please describe this category's topic with a short label (2-5 words):
+        best_k = max(scores, key=lambda x: x[1])[0]
+        return best_k
 
-{sample_texts}
-
-Category label:"""
-            }],
-            temperature=0
-        )
-        return response.choices[0].message.content.strip()
-
-    def find_similar_cluster(self, content: str) -> dict:
-        """Find cluster for new content"""
+    def assign_cluster(self, content: str) -> dict:
+        """Assign new content to existing cluster"""
         embedding = self.model.encode(content).tolist()
 
         results = self.client.search(
@@ -196,7 +279,11 @@ Category label:"""
         cluster_votes = {}
         for hit in results[0]:
             cid = hit["entity"]["cluster_id"]
-            cluster_votes[cid] = cluster_votes.get(cid, 0) + 1
+            if cid != -1:  # Ignore noise
+                cluster_votes[cid] = cluster_votes.get(cid, 0) + 1
+
+        if not cluster_votes:
+            return {"cluster_id": -1, "confidence": 0}
 
         best_cluster = max(cluster_votes, key=cluster_votes.get)
         return {
@@ -207,64 +294,110 @@ Category label:"""
 # Usage
 clustering = VectorClustering()
 
-# Add data
 clustering.add_data([
-    {"id": "1", "content": "Python is a great programming language"},
-    {"id": "2", "content": "Java is popular in enterprise development"},
-    {"id": "3", "content": "Machine learning requires lots of data"},
-    {"id": "4", "content": "Deep learning is the core technology of AI"},
-    {"id": "5", "content": "The weather is nice today, good for an outing"},
-    {"id": "6", "content": "Going hiking on the weekend is a good choice"},
+    {"id": "1", "content": "Python is great for data science"},
+    {"id": "2", "content": "Machine learning needs lots of data"},
+    {"id": "3", "content": "The weather is nice today"},
+    {"id": "4", "content": "Deep learning revolutionized AI"},
+    {"id": "5", "content": "Going hiking on weekends is relaxing"},
 ])
 
-# KMeans clustering
-result = clustering.cluster_kmeans(n_clusters=3)
-print(f"Cluster count: {result['n_clusters']}")
+# Find optimal K
+best_k = clustering.find_optimal_k(min_k=2, max_k=5)
+print(f"Optimal K: {best_k}")
+
+# Cluster
+result = clustering.cluster_kmeans(n_clusters=best_k)
 for cid, items in result['clusters'].items():
     print(f"\nCluster {cid} ({len(items)} items):")
     for item in items[:3]:
         print(f"  - {item['content'][:50]}...")
-
-# Classify new content
-new_cluster = clustering.find_similar_cluster("Go language has great concurrency performance")
-print(f"Assigned cluster: {new_cluster['cluster_id']}, Confidence: {new_cluster['confidence']:.2f}")
 ```
-
-## Algorithm Selection
-
-| Algorithm | Characteristics | Use Case |
-|-----------|-----------------|----------|
-| **KMeans** | Need to specify k, fast | Known category count |
-| **DBSCAN** | Auto-discovers k, finds outliers | Unknown category count |
-| **HDBSCAN** | Improved DBSCAN, more stable | Large-scale data |
 
 ## Parameter Tuning
 
+### KMeans: Choosing K
+
 ```python
-# KMeans: Use elbow method to choose k
+# Elbow method visualization
 from sklearn.metrics import silhouette_score
 
 scores = []
 for k in range(2, 20):
-    kmeans = KMeans(n_clusters=k)
+    kmeans = KMeans(n_clusters=k, n_init=10)
     labels = kmeans.fit_predict(embeddings)
     scores.append(silhouette_score(embeddings, labels))
-best_k = scores.index(max(scores)) + 2
 
-# DBSCAN: Adjust eps
-# eps too small → too many clusters
-# eps too large → too few clusters
+# Pick K with highest silhouette score
+best_k = scores.index(max(scores)) + 2
 ```
 
-## Vertical Applications
+### DBSCAN: Tuning eps
 
-See `verticals/` directory for detailed guides:
-- `topic.md` - Topic clustering
-- `user-segmentation.md` - User segmentation
-- `anomaly.md` - Anomaly detection
+| eps Value | Effect |
+|-----------|--------|
+| Too small | Too many tiny clusters |
+| Too large | Everything in one cluster |
+| Just right | Meaningful groups + outliers |
 
-## Related Tools
+```python
+# Start with distance analysis
+from sklearn.neighbors import NearestNeighbors
 
-- Vectorization: `core:embedding`
-- Duplicate detection: `data-analytics:duplicate-detection`
-- Indexing: `core:indexing`
+neighbors = NearestNeighbors(n_neighbors=5)
+neighbors.fit(embeddings)
+distances, _ = neighbors.kneighbors(embeddings)
+# Plot distances and look for "elbow" to set eps
+```
+
+## Common Pitfalls
+
+### ❌ Pitfall 1: Wrong K
+
+**Problem**: Clusters don't make sense
+
+**Why**: Arbitrary K choice
+
+**Fix**: Use silhouette score or domain knowledge
+
+### ❌ Pitfall 2: DBSCAN eps Too Sensitive
+
+**Problem**: Small eps change dramatically changes results
+
+**Why**: Density-based algorithm, data-dependent
+
+**Fix**: Try HDBSCAN (more robust) or normalize embeddings
+
+### ❌ Pitfall 3: Ignoring Outliers
+
+**Problem**: Forcing outliers into clusters degrades quality
+
+**Why**: Not all data belongs to a cluster
+
+**Fix**: Use DBSCAN to identify noise (label=-1)
+
+### ❌ Pitfall 4: Clusters Without Names
+
+**Problem**: Cluster IDs meaningless to users
+
+**Fix**: Use LLM to name clusters based on samples
+```python
+def name_cluster(samples):
+    prompt = f"Name this group based on samples: {samples}"
+    return llm.generate(prompt)
+```
+
+## When to Level Up
+
+| Need | Upgrade To |
+|------|------------|
+| Find duplicates | `duplicate-detection` |
+| Hierarchical clusters | Use HDBSCAN |
+| Real-time clustering | Add incremental clustering |
+| Large scale | Add `core:ray` for distributed |
+
+## References
+
+- Topic modeling: `verticals/topic.md`
+- User segmentation: `verticals/user-segmentation.md`
+- Anomaly detection: `verticals/anomaly.md`
