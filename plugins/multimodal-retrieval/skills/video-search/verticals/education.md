@@ -1,344 +1,332 @@
 # Educational Video Search
 
-## Use Cases
+> Search lecture videos by knowledge point, topic, or spoken content.
 
-- Online course knowledge point search
-- Training video retrieval
-- Lecture/public course search
-- MOOC platform video retrieval
+---
 
-## Data Characteristics
+## Before You Start
 
-- Has subtitles/narration (audio-driven)
-- Dense knowledge points
-- PPT/whiteboard frames
-- Requires positioning by knowledge points
+Answer these questions to configure the optimal setup:
 
-## Recommended Configuration
+### 1. Search Mode
 
-| Config | Recommended Value | Description |
-|--------|------------------|-------------|
-| ASR Model | Whisper large | High accuracy |
-| | FunASR | Chinese optimized |
-| Text Embedding | `BAAI/bge-large-en-v1.5` | Subtitles/narration |
-| Frame Interval | 30-60 seconds | Educational content changes slowly |
-| Segment Length | 30-60 seconds | One knowledge point |
+<ask_user>
+How do you want to search educational videos?
 
-## Schema Design
+| Mode | Description |
+|------|-------------|
+| **By transcript** | Search spoken narration/lecture content |
+| **By slides/frames** | Search PPT/whiteboard content (OCR) |
+| **Both** (recommended) | Full content search |
+</ask_user>
 
-```python
-schema = client.create_schema()
-schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+### 2. Video Language
 
-# Content
-schema.add_field("content_type", DataType.VARCHAR, max_length=16)   # transcript/frame
-schema.add_field("content", DataType.VARCHAR, max_length=65535)     # Subtitle text or frame description
-schema.add_field("frame_path", DataType.VARCHAR, max_length=512)
+<ask_user>
+What language are the videos in?
 
-# Time positioning
-schema.add_field("start_time", DataType.FLOAT)                      # Start time (seconds)
-schema.add_field("end_time", DataType.FLOAT)                        # End time
+| Language | ASR Model |
+|----------|-----------|
+| **English** | Whisper (best accuracy) |
+| **Chinese** | Whisper or FunASR |
+| **Multilingual** | Whisper (auto-detect) |
+</ask_user>
 
-# Course information
-schema.add_field("video_id", DataType.VARCHAR, max_length=64)
-schema.add_field("video_title", DataType.VARCHAR, max_length=256)
-schema.add_field("course", DataType.VARCHAR, max_length=128)        # Course name
-schema.add_field("teacher", DataType.VARCHAR, max_length=64)        # Instructor
-schema.add_field("chapter", DataType.VARCHAR, max_length=128)       # Chapter
-schema.add_field("keywords", DataType.VARCHAR, max_length=256)      # Knowledge point keywords
+### 3. Text Embedding
+
+<ask_user>
+Choose transcript embedding:
+
+| Method | Pros | Cons |
+|--------|------|------|
+| **OpenAI API** | High quality | Requires API key |
+| **Local Model** | Free, offline | Model download |
+</ask_user>
+
+### 4. Local Model (if local)
+
+<ask_user>
+| Model | Size | Notes |
+|-------|------|-------|
+| `all-MiniLM-L6-v2` | 80MB | Fast |
+| `BAAI/bge-base-en-v1.5` | 440MB | English |
+| `BAAI/bge-base-zh-v1.5` | 400MB | Chinese |
+</ask_user>
+
+### 5. Data Scale
+
+<ask_user>
+How many videos do you have?
+
+- Each video = transcript chunks + keyframes
+- Example: 100 lectures × 1 hour ≈ 100 × (60 chunks + 30 frames) = 9K vectors
+
+| Vector Count | Recommended Milvus |
+|--------------|-------------------|
+| < 100K | **Milvus Lite** |
+| 100K - 10M | **Milvus Standalone** |
+| > 10M | **Zilliz Cloud** |
+</ask_user>
+
+### 6. Project Setup
+
+<ask_user>
+| Method | Best For |
+|--------|----------|
+| **uv + pyproject.toml** (recommended) | Production projects |
+| **pip** | Quick prototypes |
+</ask_user>
+
+---
+
+## Dependencies
+
+```bash
+uv init edu-video-search
+cd edu-video-search
+uv add pymilvus openai-whisper sentence-transformers opencv-python pytesseract
 ```
 
-## Implementation
+---
+
+## End-to-End Implementation
+
+### Step 1: Configure Models
+
+```python
+import whisper
+from sentence_transformers import SentenceTransformer
+
+# ASR model
+asr_model = whisper.load_model("base")  # or "small", "medium", "large"
+
+# Text embedding
+text_model = SentenceTransformer("BAAI/bge-base-en-v1.5")
+
+DIMENSION = 768
+
+def embed(texts: list[str]) -> list[list[float]]:
+    return text_model.encode(texts, normalize_embeddings=True).tolist()
+```
+
+### Step 2: Create Collection
 
 ```python
 from pymilvus import MilvusClient, DataType
-from sentence_transformers import SentenceTransformer
-import whisper
-import cv2
+
+client = MilvusClient("education.db")
+
+schema = client.create_schema(auto_id=True)
+schema.add_field("id", DataType.INT64, is_primary=True)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=DIMENSION)
+schema.add_field("content", DataType.VARCHAR, max_length=65535)
+schema.add_field("content_type", DataType.VARCHAR, max_length=16)  # transcript/frame
+schema.add_field("start_time", DataType.FLOAT)
+schema.add_field("end_time", DataType.FLOAT)
+schema.add_field("video_id", DataType.VARCHAR, max_length=64)
+schema.add_field("video_title", DataType.VARCHAR, max_length=256)
+schema.add_field("course", DataType.VARCHAR, max_length=128)
+schema.add_field("chapter", DataType.VARCHAR, max_length=128)
+schema.add_field("keywords", DataType.VARCHAR, max_length=256)
+
+index_params = client.prepare_index_params()
+index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
+
+client.create_collection("edu_videos", schema=schema, index_params=index_params)
+```
+
+### Step 3: Extract & Transcribe
+
+```python
 import os
+import cv2
 
-class EducationVideoSearch:
-    def __init__(self, uri: str = "./milvus.db"):
-        self.client = MilvusClient(uri=uri)
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
-        self.asr = whisper.load_model("large")
-        self._init_collection()
+def transcribe_video(video_path: str) -> list[dict]:
+    """Extract audio and transcribe."""
+    audio_path = video_path.rsplit(".", 1)[0] + ".wav"
+    os.system(f'ffmpeg -i "{video_path}" -vn -acodec pcm_s16le -ar 16000 -ac 1 "{audio_path}" -y 2>/dev/null')
 
-    def _extract_transcript(self, video_path: str) -> list:
-        """Extract subtitles"""
-        # Extract audio
-        audio_path = video_path.replace(video_path.split('.')[-1], 'wav')
-        os.system(f"ffmpeg -i {video_path} -vn -acodec pcm_s16le -ar 16000 -ac 1 {audio_path} -y")
+    result = asr_model.transcribe(audio_path, language="en")
+    os.remove(audio_path)
 
-        # ASR transcription
-        result = self.asr.transcribe(audio_path, language="en")
+    return [{"text": s["text"], "start": s["start"], "end": s["end"]}
+            for s in result["segments"]]
 
-        segments = []
-        for seg in result["segments"]:
-            segments.append({
-                "text": seg["text"],
-                "start": seg["start"],
-                "end": seg["end"]
-            })
+def merge_segments(segments: list[dict], target_duration: int = 30) -> list[dict]:
+    """Merge into ~30s chunks."""
+    merged = []
+    current = {"text": "", "start": 0, "end": 0}
 
-        return segments
+    for seg in segments:
+        if not current["text"]:
+            current["start"] = seg["start"]
 
-    def _merge_segments(self, segments: list, target_duration: int = 30) -> list:
-        """Merge subtitle segments (by time window)"""
-        merged = []
-        current_text = ""
-        current_start = 0
+        current["text"] += " " + seg["text"]
+        current["end"] = seg["end"]
 
-        for seg in segments:
-            if not current_text:
-                current_start = seg["start"]
+        if current["end"] - current["start"] >= target_duration:
+            merged.append(current)
+            current = {"text": "", "start": 0, "end": 0}
 
-            current_text += seg["text"] + " "
+    if current["text"]:
+        merged.append(current)
 
-            if seg["end"] - current_start >= target_duration:
-                merged.append({
-                    "text": current_text.strip(),
-                    "start": current_start,
-                    "end": seg["end"]
-                })
-                current_text = ""
+    return merged
 
-        if current_text:
-            merged.append({
-                "text": current_text.strip(),
-                "start": current_start,
-                "end": segments[-1]["end"]
-            })
+def extract_keywords(text: str) -> str:
+    """Extract keywords using simple frequency."""
+    from collections import Counter
+    words = [w.lower() for w in text.split() if len(w) > 4]
+    top = Counter(words).most_common(5)
+    return ",".join(w for w, _ in top)
+```
 
-        return merged
+### Step 4: Extract Keyframes with OCR
 
-    def _extract_keywords(self, text: str) -> str:
-        """Extract knowledge point keywords (can use LLM or TF-IDF)"""
-        # Simplified version: use keyword extraction
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        # Simple keyword extraction - in production use better NLP tools
-        words = text.lower().split()
-        # Return top frequent meaningful words
-        from collections import Counter
-        word_counts = Counter(w for w in words if len(w) > 4)
-        keywords = [w for w, _ in word_counts.most_common(5)]
-        return ",".join(keywords)
+```python
+import pytesseract
+from PIL import Image
 
-    def add_video(self, video_path: str, video_id: str, course: str,
-                  teacher: str, chapter: str = "", output_dir: str = "./edu_video_data"):
-        """Process educational video"""
-        os.makedirs(output_dir, exist_ok=True)
-        video_title = os.path.basename(video_path)
-        data = []
+def extract_frames_with_ocr(video_path: str, interval: int = 60) -> list[dict]:
+    """Extract frames and OCR text (for PPT/whiteboard)."""
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_interval = int(fps * interval)
 
-        # 1. Extract and process subtitles
-        print("Extracting subtitles...")
-        raw_segments = self._extract_transcript(video_path)
-        merged_segments = self._merge_segments(raw_segments, target_duration=30)
+    frames = []
+    count = 0
 
-        for i, seg in enumerate(merged_segments):
-            keywords = self._extract_keywords(seg["text"])
-            embedding = self.model.encode(seg["text"]).tolist()
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
+        if count % frame_interval == 0:
+            timestamp = count / fps
+            # OCR
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(rgb)
+            try:
+                text = pytesseract.image_to_string(pil_img, lang='eng')
+                if text.strip():
+                    frames.append({"text": text.strip(), "timestamp": timestamp})
+            except:
+                pass
+
+        count += 1
+
+    cap.release()
+    return frames
+```
+
+### Step 5: Process & Index Video
+
+```python
+def process_video(video_path: str, video_id: str, course: str, chapter: str = ""):
+    """Process and index an educational video."""
+    video_title = os.path.basename(video_path)
+    data = []
+
+    # Transcribe
+    print("Transcribing...")
+    segments = transcribe_video(video_path)
+    chunks = merge_segments(segments, target_duration=30)
+
+    for i, chunk in enumerate(chunks):
+        keywords = extract_keywords(chunk["text"])
+        embedding = embed([chunk["text"]])[0]
+
+        data.append({
+            "embedding": embedding,
+            "content": chunk["text"][:5000],
+            "content_type": "transcript",
+            "start_time": chunk["start"],
+            "end_time": chunk["end"],
+            "video_id": video_id,
+            "video_title": video_title,
+            "course": course,
+            "chapter": chapter,
+            "keywords": keywords
+        })
+
+    # Extract frames with OCR
+    print("Extracting frames...")
+    frames = extract_frames_with_ocr(video_path, interval=60)
+
+    for frame in frames:
+        if len(frame["text"]) > 50:  # Skip short OCR results
+            embedding = embed([frame["text"]])[0]
             data.append({
-                "id": f"{video_id}_transcript_{i}",
                 "embedding": embedding,
-                "content_type": "transcript",
-                "content": seg["text"],
-                "frame_path": "",
-                "start_time": seg["start"],
-                "end_time": seg["end"],
+                "content": frame["text"][:5000],
+                "content_type": "frame",
+                "start_time": frame["timestamp"],
+                "end_time": frame["timestamp"] + 60,
                 "video_id": video_id,
                 "video_title": video_title,
                 "course": course,
-                "teacher": teacher,
                 "chapter": chapter,
-                "keywords": keywords
+                "keywords": ""
             })
 
-        # 2. Extract key frames (longer intervals for educational videos)
-        print("Extracting key frames...")
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_interval = int(fps * 60)  # One frame every 60 seconds
-
-        frame_count = 0
-        saved_count = 0
-
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            if frame_count % frame_interval == 0:
-                timestamp = frame_count / fps
-                frame_path = os.path.join(output_dir, f"{video_id}_frame_{saved_count:04d}.jpg")
-                cv2.imwrite(frame_path, frame)
-
-                # For educational videos, frames mainly locate PPT/whiteboard
-                # Can use OCR to extract text
-                frame_text = self._ocr_frame(frame_path)
-
-                if frame_text:
-                    embedding = self.model.encode(frame_text).tolist()
-                    data.append({
-                        "id": f"{video_id}_frame_{saved_count}",
-                        "embedding": embedding,
-                        "content_type": "frame",
-                        "content": frame_text,
-                        "frame_path": frame_path,
-                        "start_time": timestamp,
-                        "end_time": timestamp + 60,
-                        "video_id": video_id,
-                        "video_title": video_title,
-                        "course": course,
-                        "teacher": teacher,
-                        "chapter": chapter,
-                        "keywords": ""
-                    })
-
-                saved_count += 1
-
-            frame_count += 1
-
-        cap.release()
-
-        # Batch insert
-        if data:
-            self.client.insert(collection_name="education_videos", data=data)
-
-        return {
-            "video_id": video_id,
-            "transcript_segments": len([d for d in data if d["content_type"] == "transcript"]),
-            "frames": len([d for d in data if d["content_type"] == "frame"])
-        }
-
-    def _ocr_frame(self, frame_path: str) -> str:
-        """OCR extract text from frame (PPT/whiteboard)"""
-        try:
-            import pytesseract
-            from PIL import Image
-            image = Image.open(frame_path)
-            text = pytesseract.image_to_string(image, lang='eng')
-            return text.strip()
-        except:
-            return ""
-
-    def search(self, query: str, course: str = None, teacher: str = None,
-               limit: int = 10) -> list:
-        """Search knowledge points"""
-        embedding = self.model.encode(query).tolist()
-
-        # Build filter conditions
-        filters = ['content_type == "transcript"']  # Mainly search subtitles
-        if course:
-            filters.append(f'course == "{course}"')
-        if teacher:
-            filters.append(f'teacher == "{teacher}"')
-
-        filter_expr = ' and '.join(filters)
-
-        results = self.client.search(
-            collection_name="education_videos",
-            data=[embedding],
-            filter=filter_expr,
-            limit=limit,
-            output_fields=["content", "start_time", "end_time", "video_id",
-                          "video_title", "course", "teacher", "chapter", "keywords"]
-        )
-
-        return [{
-            "video_id": r["entity"]["video_id"],
-            "video_title": r["entity"]["video_title"],
-            "course": r["entity"]["course"],
-            "teacher": r["entity"]["teacher"],
-            "chapter": r["entity"]["chapter"],
-            "content": r["entity"]["content"][:200] + "...",
-            "keywords": r["entity"]["keywords"],
-            "start_time": r["entity"]["start_time"],
-            "end_time": r["entity"]["end_time"],
-            "url": self._generate_url(r["entity"]["video_id"], r["entity"]["start_time"]),
-            "score": r["distance"]
-        } for r in results[0]]
-
-    def _generate_url(self, video_id: str, start_time: float) -> str:
-        """Generate playback link with timestamp"""
-        # Adjust based on actual platform
-        return f"/play/{video_id}?t={int(start_time)}"
-
-    def search_by_chapter(self, course: str, chapter: str) -> list:
-        """Browse by chapter"""
-        results = self.client.query(
-            collection_name="education_videos",
-            filter=f'course == "{course}" and chapter == "{chapter}" and content_type == "transcript"',
-            output_fields=["content", "start_time", "end_time", "keywords"],
-            limit=100
-        )
-
-        # Sort by time
-        results.sort(key=lambda x: x["start_time"])
-        return results
+    client.insert(collection_name="edu_videos", data=data)
+    print(f"Indexed {len(data)} segments")
 ```
 
-## Examples
+### Step 6: Search
 
 ```python
-search = EducationVideoSearch()
+def search_videos(query: str, top_k: int = 10, course: str = None):
+    """Search educational videos."""
+    query_embedding = embed([query])[0]
 
-# Add course video
-stats = search.add_video(
+    filters = ['content_type == "transcript"']
+    if course:
+        filters.append(f'course == "{course}"')
+
+    results = client.search(
+        collection_name="edu_videos",
+        data=[query_embedding],
+        filter=" and ".join(filters),
+        limit=top_k,
+        output_fields=["content", "start_time", "end_time", "video_id",
+                      "video_title", "course", "chapter", "keywords"]
+    )
+    return results[0]
+
+def format_time(seconds: float) -> str:
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"{m:02d}:{s:02d}"
+
+def print_results(results):
+    for i, r in enumerate(results, 1):
+        e = r["entity"]
+        print(f"\n#{i} [{e['course']}] {e['video_title']}")
+        print(f"    Chapter: {e['chapter']}")
+        print(f"    Time: {format_time(e['start_time'])} - {format_time(e['end_time'])}")
+        print(f"    Keywords: {e['keywords']}")
+        print(f"    Score: {r['distance']:.3f}")
+        print(f"    Content: {e['content'][:150]}...")
+```
+
+---
+
+## Run Example
+
+```python
+# Index lecture videos
+process_video(
     video_path="machine_learning_01.mp4",
     video_id="ml_001",
     course="Machine Learning",
-    teacher="Prof. Smith",
-    chapter="Chapter 1 Introduction"
+    chapter="Chapter 1: Introduction"
 )
 
-# Search knowledge points
-results = search.search(
-    "What is gradient descent algorithm",
-    course="Machine Learning"
-)
+# Search
+results = search_videos("gradient descent algorithm")
+print_results(results)
 
-print("Search results:")
-for r in results:
-    print(f"\n[{r['course']} - {r['chapter']}]")
-    print(f"Instructor: {r['teacher']}")
-    print(f"Time: {r['start_time']:.0f}s - {r['end_time']:.0f}s")
-    print(f"Keywords: {r['keywords']}")
-    print(f"Content: {r['content']}")
-    print(f"Play link: {r['url']}")
-```
-
-## Advanced Features
-
-### Knowledge Graph
-
-```python
-def build_knowledge_graph(self, course: str):
-    """Build course knowledge graph"""
-    # Get all segment keywords
-    results = self.client.query(
-        collection_name="education_videos",
-        filter=f'course == "{course}" and content_type == "transcript"',
-        output_fields=["keywords", "chapter"],
-        limit=1000
-    )
-
-    # Statistics: keyword frequency and chapter relationships
-    keyword_stats = {}
-    chapter_keywords = {}
-
-    for r in results:
-        chapter = r["chapter"]
-        keywords = r["keywords"].split(",")
-
-        for kw in keywords:
-            if kw not in keyword_stats:
-                keyword_stats[kw] = {"count": 0, "chapters": set()}
-            keyword_stats[kw]["count"] += 1
-            keyword_stats[kw]["chapters"].add(chapter)
-
-    return keyword_stats
+results = search_videos("backpropagation neural network", course="Machine Learning")
+print_results(results)
 ```

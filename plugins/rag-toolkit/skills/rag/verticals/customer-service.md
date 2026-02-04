@@ -1,205 +1,314 @@
-# Customer Service Knowledge Base QA
+# Customer Service Knowledge Base
 
-## Data Characteristics
+> Build a customer service chatbot with FAQ, documentation, and ticket history.
 
-- FAQ question-answer pairs
-- Product documentation
-- Historical ticket records
-- Requires fast response
-- Multi-turn conversation scenarios
+---
 
-## Recommended Configuration
+## Before You Start
 
-| Config Item | Recommended Value | Notes |
-|-------------|-------------------|-------|
-| Embedding Model | `text-embedding-3-small` | OpenAI embedding |
-| Chunk Size | 256-512 tokens | Short answers preferred |
-| LLM | GPT-3.5-turbo | Speed priority |
-| | GPT-4o-mini | Cost-effective |
-| Retrieval Count | 3-5 | Customer service doesn't need too much context |
+Answer these questions to configure the optimal setup:
 
-## Schema Design
+### 1. Knowledge Language
 
-```python
-schema = client.create_schema()
-schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
-schema.add_field("content", DataType.VARCHAR, max_length=65535)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
+<ask_user>
+What language is your knowledge base in?
 
-# Knowledge classification
-schema.add_field("kb_type", DataType.VARCHAR, max_length=32)       # faq/doc/ticket
-schema.add_field("category", DataType.VARCHAR, max_length=64)      # Product category
-schema.add_field("product", DataType.VARCHAR, max_length=128)      # Specific product
+| Option | Model Recommendation |
+|--------|---------------------|
+| **English** | English models |
+| **Chinese** | Chinese models |
+| **Multilingual** | Multilingual models |
+</ask_user>
 
-# FAQ-specific fields
-schema.add_field("question", DataType.VARCHAR, max_length=512)     # Original question
-schema.add_field("answer", DataType.VARCHAR, max_length=65535)     # Standard answer
+### 2. Embedding Method
 
-# Ticket-specific fields
-schema.add_field("resolution", DataType.VARCHAR, max_length=65535) # Resolution
-schema.add_field("solved", DataType.BOOL)                          # Whether solved
+<ask_user>
+Choose your embedding approach:
 
-# Statistics fields
-schema.add_field("hit_count", DataType.INT32)                      # Hit count
-schema.add_field("helpful_count", DataType.INT32)                  # Helpful count
+| Method | Pros | Cons |
+|--------|------|------|
+| **OpenAI API** | High quality, fast | Requires API key |
+| **Local Model** | Free, offline | Model download |
+</ask_user>
+
+### 3. LLM for Generation
+
+<ask_user>
+Choose LLM for answer generation:
+
+| Model | Notes |
+|-------|-------|
+| **GPT-4o-mini** (recommended) | Cost-effective, fast |
+| **GPT-4o** | Highest quality |
+| **Local LLM** | Ollama, vLLM |
+</ask_user>
+
+### 4. Data Scale
+
+<ask_user>
+How much knowledge do you have?
+
+- FAQ: ~1 vector per Q&A pair
+- Docs: ~50-100 chunks per document
+- Tickets: ~1 chunk per resolved ticket
+
+| Vector Count | Recommended Milvus |
+|--------------|-------------------|
+| < 100K | **Milvus Lite** |
+| 100K - 10M | **Milvus Standalone** |
+| > 10M | **Zilliz Cloud** |
+</ask_user>
+
+### 5. Project Setup
+
+<ask_user>
+| Method | Best For |
+|--------|----------|
+| **uv + pyproject.toml** (recommended) | Production |
+| **pip** | Quick prototype |
+</ask_user>
+
+---
+
+## Dependencies
+
+```bash
+uv init customer-service-rag
+cd customer-service-rag
+uv add pymilvus openai
+# Or for local embedding:
+uv add pymilvus sentence-transformers openai
 ```
 
-## Multi-Source Retrieval Strategy
+---
+
+## End-to-End Implementation
+
+### Step 1: Configure Embedding & LLM
 
 ```python
-class CustomerServiceRAG:
-    def __init__(self, uri: str = "./milvus.db"):
-        self.client = MilvusClient(uri=uri)
-        self.openai = OpenAI()
+from openai import OpenAI
 
-    def _embed(self, text: str) -> list:
-        """Generate embedding using OpenAI API"""
-        response = self.openai.embeddings.create(
-            model="text-embedding-3-small",
-            input=[text]
-        )
-        return response.data[0].embedding
+client = OpenAI()
 
-    def search_faq(self, query: str, limit: int = 3) -> list:
-        """Search FAQ"""
-        embedding = self._embed(query)
-        return self.client.search(
-            collection_name="customer_service_kb",
-            data=[embedding],
-            filter='kb_type == "faq"',
-            limit=limit,
-            output_fields=["question", "answer", "hit_count"]
-        )
+def embed(texts: list[str]) -> list[list[float]]:
+    resp = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return [e.embedding for e in resp.data]
 
-    def search_docs(self, query: str, product: str = "", limit: int = 3) -> list:
-        """Search product documentation"""
-        embedding = self._embed(query)
-        filter_expr = 'kb_type == "doc"'
-        if product:
-            filter_expr += f' and product == "{product}"'
+DIMENSION = 1536
 
-        return self.client.search(
-            collection_name="customer_service_kb",
-            data=[embedding],
-            filter=filter_expr,
-            limit=limit,
-            output_fields=["content", "product"]
-        )
+def generate_answer(prompt: str) -> str:
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3
+    )
+    return resp.choices[0].message.content
+```
 
-    def search_similar_tickets(self, query: str, limit: int = 3) -> list:
-        """Search similar tickets"""
-        embedding = self._embed(query)
-        return self.client.search(
-            collection_name="customer_service_kb",
-            data=[embedding],
-            filter='kb_type == "ticket" and solved == true',
-            limit=limit,
-            output_fields=["content", "resolution"]
-        )
+### Step 2: Create Collection
 
-    def answer(self, question: str, product: str = "") -> dict:
-        """Generate answer"""
-        # 1. Search FAQ first (exact match)
-        faq_results = self.search_faq(question, limit=3)
+```python
+from pymilvus import MilvusClient, DataType
 
-        # If FAQ highly matches, return directly
-        if faq_results[0] and faq_results[0][0]["distance"] > 0.9:
-            top_faq = faq_results[0][0]["entity"]
-            return {
-                "answer": top_faq["answer"],
-                "source": "faq",
-                "confidence": "high"
-            }
+milvus = MilvusClient("customer_service.db")
 
-        # 2. Search documentation and tickets
-        doc_results = self.search_docs(question, product, limit=3)
-        ticket_results = self.search_similar_tickets(question, limit=2)
+schema = milvus.create_schema(auto_id=True)
+schema.add_field("id", DataType.INT64, is_primary=True)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=DIMENSION)
+schema.add_field("content", DataType.VARCHAR, max_length=65535)
+schema.add_field("kb_type", DataType.VARCHAR, max_length=32)  # faq/doc/ticket
+schema.add_field("category", DataType.VARCHAR, max_length=64)
+schema.add_field("product", DataType.VARCHAR, max_length=128)
+schema.add_field("question", DataType.VARCHAR, max_length=512)  # For FAQ
+schema.add_field("answer", DataType.VARCHAR, max_length=65535)  # For FAQ
 
-        # 3. Combine context
-        context_parts = []
+index_params = milvus.prepare_index_params()
+index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
 
-        for r in faq_results[0]:
-            context_parts.append(f"FAQ: {r['entity']['question']}\nAnswer: {r['entity']['answer']}")
+milvus.create_collection("customer_service", schema=schema, index_params=index_params)
+```
 
-        for r in doc_results[0]:
-            context_parts.append(f"Documentation: {r['entity']['content']}")
+### Step 3: Index Knowledge
 
-        for r in ticket_results[0]:
-            context_parts.append(f"Historical Ticket: {r['entity']['content']}\nResolution: {r['entity']['resolution']}")
+```python
+def add_faq(faqs: list[dict]):
+    """Add FAQ entries. faqs: [{"question": "...", "answer": "...", "category": "..."}]"""
+    questions = [f["question"] for f in faqs]
+    embeddings = embed(questions)
 
-        context = "\n\n".join(context_parts)
+    data = [
+        {
+            "embedding": emb,
+            "content": f["question"],
+            "kb_type": "faq",
+            "category": f.get("category", ""),
+            "product": f.get("product", ""),
+            "question": f["question"],
+            "answer": f["answer"]
+        }
+        for f, emb in zip(faqs, embeddings)
+    ]
+    milvus.insert(collection_name="customer_service", data=data)
 
-        # 4. LLM generation
-        prompt = f"""You are a professional customer service assistant. Answer user questions based on the following reference materials.
+def add_docs(docs: list[dict]):
+    """Add documentation. docs: [{"content": "...", "product": "..."}]"""
+    contents = [d["content"] for d in docs]
+    embeddings = embed(contents)
+
+    data = [
+        {
+            "embedding": emb,
+            "content": d["content"][:5000],
+            "kb_type": "doc",
+            "category": d.get("category", ""),
+            "product": d.get("product", ""),
+            "question": "",
+            "answer": ""
+        }
+        for d, emb in zip(docs, embeddings)
+    ]
+    milvus.insert(collection_name="customer_service", data=data)
+
+def add_tickets(tickets: list[dict]):
+    """Add resolved tickets. tickets: [{"issue": "...", "resolution": "..."}]"""
+    issues = [t["issue"] for t in tickets]
+    embeddings = embed(issues)
+
+    data = [
+        {
+            "embedding": emb,
+            "content": t["issue"],
+            "kb_type": "ticket",
+            "category": t.get("category", ""),
+            "product": t.get("product", ""),
+            "question": "",
+            "answer": t["resolution"]
+        }
+        for t, emb in zip(tickets, embeddings)
+    ]
+    milvus.insert(collection_name="customer_service", data=data)
+```
+
+### Step 4: Multi-Source Retrieval
+
+```python
+def search_faq(query: str, limit: int = 3):
+    embedding = embed([query])[0]
+    return milvus.search(
+        collection_name="customer_service",
+        data=[embedding],
+        filter='kb_type == "faq"',
+        limit=limit,
+        output_fields=["question", "answer"]
+    )[0]
+
+def search_docs(query: str, product: str = None, limit: int = 3):
+    embedding = embed([query])[0]
+    filter_expr = 'kb_type == "doc"'
+    if product:
+        filter_expr += f' and product == "{product}"'
+
+    return milvus.search(
+        collection_name="customer_service",
+        data=[embedding],
+        filter=filter_expr,
+        limit=limit,
+        output_fields=["content", "product"]
+    )[0]
+
+def search_tickets(query: str, limit: int = 2):
+    embedding = embed([query])[0]
+    return milvus.search(
+        collection_name="customer_service",
+        data=[embedding],
+        filter='kb_type == "ticket"',
+        limit=limit,
+        output_fields=["content", "answer"]
+    )[0]
+```
+
+### Step 5: Generate Answer
+
+```python
+def answer_question(question: str, product: str = None) -> dict:
+    """Generate answer from multiple knowledge sources."""
+    # Search FAQ first
+    faq_results = search_faq(question, limit=3)
+
+    # High-confidence FAQ match
+    if faq_results and faq_results[0]["distance"] > 0.9:
+        return {
+            "answer": faq_results[0]["entity"]["answer"],
+            "source": "faq",
+            "confidence": "high"
+        }
+
+    # Search docs and tickets
+    doc_results = search_docs(question, product, limit=3)
+    ticket_results = search_tickets(question, limit=2)
+
+    # Build context
+    context_parts = []
+
+    for r in faq_results:
+        context_parts.append(f"FAQ: {r['entity']['question']}\nAnswer: {r['entity']['answer']}")
+
+    for r in doc_results:
+        context_parts.append(f"Documentation: {r['entity']['content'][:500]}")
+
+    for r in ticket_results:
+        context_parts.append(f"Similar Issue: {r['entity']['content']}\nResolution: {r['entity']['answer']}")
+
+    context = "\n\n".join(context_parts)
+
+    # Generate with LLM
+    prompt = f"""You are a helpful customer service assistant. Answer based on the reference materials.
 
 Reference Materials:
 {context}
 
-User Question: {question}
+Customer Question: {question}
 
-Requirements:
-1. Keep answers concise and clear
-2. If uncertain, indicate transfer to human agent is needed
-3. Provide next step recommendations
+Instructions:
+- Be concise and helpful
+- If unsure, suggest contacting human support
+- Provide next steps if applicable
 
 Answer:"""
 
-        response = self.openai.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
+    answer = generate_answer(prompt)
 
-        return {
-            "answer": response.choices[0].message.content,
-            "source": "rag",
-            "confidence": "medium"
-        }
+    return {
+        "answer": answer,
+        "source": "rag",
+        "confidence": "medium"
+    }
 ```
 
-## Feedback Learning
+---
+
+## Run Example
 
 ```python
-def record_feedback(kb_id: str, helpful: bool):
-    """Record user feedback"""
-    # Update hit count
-    client.upsert(
-        collection_name="customer_service_kb",
-        data=[{
-            "id": kb_id,
-            "hit_count": {"$inc": 1},
-            "helpful_count": {"$inc": 1 if helpful else 0}
-        }]
-    )
+# Add FAQ
+faqs = [
+    {"question": "How to reset password?", "answer": "Go to Settings > Security > Reset Password...", "category": "Account"},
+    {"question": "What is the return policy?", "answer": "30-day return for unopened items...", "category": "Orders"},
+]
+add_faq(faqs)
 
-def get_low_quality_entries(threshold: float = 0.3, min_hits: int = 10):
-    """Get low-quality entries (for manual review)"""
-    results = client.query(
-        collection_name="customer_service_kb",
-        filter=f"hit_count >= {min_hits}",
-        output_fields=["id", "question", "answer", "hit_count", "helpful_count"]
-    )
+# Add documentation
+docs = [
+    {"content": "To set up your device, first unbox and connect the power cable...", "product": "Smart Speaker"},
+]
+add_docs(docs)
 
-    low_quality = []
-    for r in results:
-        helpful_rate = r["helpful_count"] / r["hit_count"]
-        if helpful_rate < threshold:
-            low_quality.append({**r, "helpful_rate": helpful_rate})
+# Answer questions
+result = answer_question("How do I reset my password?")
+print(f"Answer: {result['answer']}")
+print(f"Source: {result['source']}, Confidence: {result['confidence']}")
 
-    return sorted(low_quality, key=lambda x: x["helpful_rate"])
-```
-
-## Examples
-
-```python
-rag = CustomerServiceRAG()
-
-# Simple question (FAQ direct answer)
-result = rag.answer("How to reset password?")
-
-# Product-related question
-result = rag.answer("How to fix printer paper jam?", product="HP LaserJet Pro")
-
-# Complex question (needs multi-source information)
-result = rag.answer("My order shows shipped but hasn't arrived after a week, what should I do?")
+result = answer_question("My speaker won't turn on", product="Smart Speaker")
+print(f"Answer: {result['answer']}")
 ```
