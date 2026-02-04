@@ -1,295 +1,346 @@
 # Personal Assistant Memory System
 
-## Use Cases
+> Build a chatbot with long-term memory across sessions.
 
-- Long-term personal assistant (cross-session memory)
-- Remember user preferences and habits
-- Contextually continuous conversation experience
+---
+
+## Before You Start
+
+Answer these questions to configure the optimal setup:
+
+### 1. Conversation Language
+
+<ask_user>
+What language will conversations be in?
+
+| Option | Model Recommendation |
+|--------|---------------------|
+| **English** | English models |
+| **Chinese** | Chinese models |
+| **Multilingual** | Multilingual models |
+</ask_user>
+
+### 2. Embedding Method
+
+<ask_user>
+Choose your embedding approach:
+
+| Method | Pros | Cons |
+|--------|------|------|
+| **OpenAI API** | High quality | Requires API key |
+| **Local Model** | Free, offline | Model download |
+</ask_user>
+
+### 3. LLM for Assistant
+
+<ask_user>
+Choose LLM for conversation:
+
+| Model | Notes |
+|-------|-------|
+| **GPT-4o** | Best quality |
+| **GPT-4o-mini** | Cost-effective |
+| **Local LLM** | Privacy, offline |
+</ask_user>
+
+### 4. Data Scale
+
+<ask_user>
+How many users and memories?
+
+- Each user ≈ 100-1000 memories over time
+
+| Memory Count | Recommended Milvus |
+|--------------|-------------------|
+| < 100K | **Milvus Lite** |
+| 100K - 10M | **Milvus Standalone** |
+| > 10M | **Zilliz Cloud** |
+</ask_user>
+
+### 5. Project Setup
+
+<ask_user>
+| Method | Best For |
+|--------|----------|
+| **uv + pyproject.toml** (recommended) | Production |
+| **pip** | Quick prototype |
+</ask_user>
+
+---
+
+## Dependencies
+
+```bash
+uv init personal-assistant
+cd personal-assistant
+uv add pymilvus openai
+```
+
+---
 
 ## Memory Types
 
 | Type | Description | Examples |
 |------|-------------|----------|
-| Fact Memory | Personal information provided by user | "I live in New York", "I'm allergic to peanuts" |
-| Preference Memory | User preferences | "I like concise answers", "I don't like emojis" |
-| Conversation Memory | Historical conversation content | Previously discussed topics |
-| Task Memory | Uncompleted tasks | "Remind me of the meeting tomorrow" |
+| Fact | User information | "I live in New York" |
+| Preference | User preferences | "I like concise answers" |
+| Task | Pending tasks | "Remind me tomorrow" |
 
-## Schema Design
+---
 
-```python
-schema = client.create_schema()
-schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
-schema.add_field("user_id", DataType.VARCHAR, max_length=64)
-schema.add_field("content", DataType.VARCHAR, max_length=65535)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1536)
+## End-to-End Implementation
 
-# Memory classification
-schema.add_field("memory_type", DataType.VARCHAR, max_length=32)   # fact/preference/conversation/task
-schema.add_field("category", DataType.VARCHAR, max_length=64)      # personal/work/health/hobby
-
-# Time and importance
-schema.add_field("created_at", DataType.INT64)
-schema.add_field("last_accessed", DataType.INT64)
-schema.add_field("access_count", DataType.INT32)
-schema.add_field("importance", DataType.FLOAT)                     # Importance 0-1
-
-# Task specific
-schema.add_field("due_time", DataType.INT64)                       # Due time
-schema.add_field("is_completed", DataType.BOOL)
-```
-
-## Implementation
+### Step 1: Configure Models
 
 ```python
-from pymilvus import MilvusClient, DataType
 from openai import OpenAI
 import time
 import uuid
 
-class PersonalAssistantMemory:
-    def __init__(self, uri: str = "./milvus.db"):
-        self.client = MilvusClient(uri=uri)
-        self.openai = OpenAI()
-        self._init_collection()
+client = OpenAI()
 
-    def _embed(self, text: str) -> list:
-        """Generate embedding using OpenAI API"""
-        response = self.openai.embeddings.create(
-            model="text-embedding-3-small",
-            input=[text]
-        )
-        return response.data[0].embedding
+def embed(texts: list[str]) -> list[list[float]]:
+    resp = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return [e.embedding for e in resp.data]
 
-    def _init_collection(self):
-        # ... collection initialization code ...
-        pass
+DIMENSION = 1536
+```
 
-    def extract_memory(self, message: str, response: str) -> list:
-        """Extract memorable information from conversation"""
-        prompt = f"""Analyze the following conversation and extract information worth remembering.
+### Step 2: Create Collection
 
-User message: {message}
-Assistant reply: {response}
+```python
+from pymilvus import MilvusClient, DataType
 
-Return JSON format for information to remember, each containing:
-- content: Memory content
+milvus = MilvusClient("assistant_memory.db")
+
+schema = milvus.create_schema()
+schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
+schema.add_field("user_id", DataType.VARCHAR, max_length=64)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=DIMENSION)
+schema.add_field("content", DataType.VARCHAR, max_length=65535)
+schema.add_field("memory_type", DataType.VARCHAR, max_length=32)  # fact/preference/task
+schema.add_field("category", DataType.VARCHAR, max_length=64)
+schema.add_field("created_at", DataType.INT64)
+schema.add_field("last_accessed", DataType.INT64)
+schema.add_field("access_count", DataType.INT32)
+schema.add_field("importance", DataType.FLOAT)
+
+index_params = milvus.prepare_index_params()
+index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
+
+milvus.create_collection("assistant_memory", schema=schema, index_params=index_params)
+```
+
+### Step 3: Memory Extraction & Storage
+
+```python
+def extract_memories(user_message: str, assistant_reply: str) -> list:
+    """Extract memorable information from conversation."""
+    prompt = f"""Analyze this conversation and extract information worth remembering.
+
+User: {user_message}
+Assistant: {assistant_reply}
+
+Return JSON array of memories, each with:
+- content: The memory content
 - type: fact/preference/task
 - category: personal/work/health/hobby/other
-- importance: Importance 0-1
+- importance: 0-1
 
-If no information worth remembering, return empty array []
+If nothing worth remembering, return []
 
-Example output:
-[
-  {{"content": "User lives in New York", "type": "fact", "category": "personal", "importance": 0.8}},
-  {{"content": "User doesn't like spicy food", "type": "preference", "category": "personal", "importance": 0.6}}
-]
+Example:
+[{{"content": "User lives in New York", "type": "fact", "category": "personal", "importance": 0.8}}]
 
 Output:"""
 
-        response = self.openai.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
 
-        try:
-            import json
-            return json.loads(response.choices[0].message.content)
-        except:
-            return []
+    try:
+        import json
+        return json.loads(resp.choices[0].message.content)
+    except:
+        return []
 
-    def save_memory(self, user_id: str, memories: list):
-        """Save memories"""
-        data = []
-        for mem in memories:
-            # Check if similar memory exists
-            existing = self.search_memory(user_id, mem["content"], limit=1)
-            if existing and existing[0]["distance"] > 0.9:
-                # Update existing memory
-                self.client.upsert(
-                    collection_name="assistant_memory",
-                    data=[{
-                        "id": existing[0]["entity"]["id"],
-                        "last_accessed": int(time.time()),
-                        "access_count": existing[0]["entity"]["access_count"] + 1
-                    }]
-                )
-                continue
+def save_memories(user_id: str, memories: list):
+    """Save memories, deduplicating similar ones."""
+    for mem in memories:
+        # Check for similar existing memory
+        existing = search_memories(user_id, mem["content"], limit=1)
+        if existing and existing[0]["distance"] > 0.9:
+            # Update existing
+            milvus.upsert(
+                collection_name="assistant_memory",
+                data=[{
+                    "id": existing[0]["id"],
+                    "last_accessed": int(time.time()),
+                    "access_count": existing[0]["entity"]["access_count"] + 1
+                }]
+            )
+            continue
 
-            data.append({
+        # Insert new
+        milvus.insert(
+            collection_name="assistant_memory",
+            data=[{
                 "id": str(uuid.uuid4()),
                 "user_id": user_id,
+                "embedding": embed([mem["content"]])[0],
                 "content": mem["content"],
-                "embedding": self._embed(mem["content"]).tolist(),
                 "memory_type": mem["type"],
                 "category": mem.get("category", "other"),
                 "created_at": int(time.time()),
                 "last_accessed": int(time.time()),
                 "access_count": 1,
-                "importance": mem.get("importance", 0.5),
-                "due_time": 0,
-                "is_completed": False
-            })
-
-        if data:
-            self.client.insert(collection_name="assistant_memory", data=data)
-
-    def search_memory(self, user_id: str, query: str, limit: int = 5,
-                      memory_type: str = None) -> list:
-        """Search relevant memories"""
-        embedding = self._embed(query).tolist()
-
-        filter_expr = f'user_id == "{user_id}"'
-        if memory_type:
-            filter_expr += f' and memory_type == "{memory_type}"'
-
-        results = self.client.search(
-            collection_name="assistant_memory",
-            data=[embedding],
-            filter=filter_expr,
-            limit=limit,
-            output_fields=["id", "content", "memory_type", "category",
-                          "importance", "access_count", "created_at"]
+                "importance": mem.get("importance", 0.5)
+            }]
         )
 
-        # Update access time
-        for r in results[0]:
-            self.client.upsert(
-                collection_name="assistant_memory",
-                data=[{
-                    "id": r["entity"]["id"],
-                    "last_accessed": int(time.time()),
-                    "access_count": r["entity"]["access_count"] + 1
-                }]
-            )
+def search_memories(user_id: str, query: str, limit: int = 5, memory_type: str = None):
+    """Search relevant memories."""
+    embedding = embed([query])[0]
 
-        return results[0]
+    filter_expr = f'user_id == "{user_id}"'
+    if memory_type:
+        filter_expr += f' and memory_type == "{memory_type}"'
 
-    def get_user_profile(self, user_id: str) -> dict:
-        """Get user profile"""
-        # Get all fact memories
-        facts = self.client.query(
-            collection_name="assistant_memory",
-            filter=f'user_id == "{user_id}" and memory_type == "fact"',
-            output_fields=["content", "category", "importance"],
-            limit=50
-        )
+    results = milvus.search(
+        collection_name="assistant_memory",
+        data=[embedding],
+        filter=filter_expr,
+        limit=limit,
+        output_fields=["id", "content", "memory_type", "category", "importance", "access_count"]
+    )
 
-        # Get all preferences
-        preferences = self.client.query(
-            collection_name="assistant_memory",
-            filter=f'user_id == "{user_id}" and memory_type == "preference"',
-            output_fields=["content", "importance"],
-            limit=50
-        )
-
-        # Organize by category
-        profile = {
-            "facts": {},
-            "preferences": []
-        }
-
-        for f in facts:
-            cat = f["category"]
-            if cat not in profile["facts"]:
-                profile["facts"][cat] = []
-            profile["facts"][cat].append(f["content"])
-
-        profile["preferences"] = [p["content"] for p in preferences]
-
-        return profile
-
-    def generate_response(self, user_id: str, message: str,
-                          conversation_history: list = None) -> str:
-        """Generate response with memory"""
-        # 1. Search relevant memories
-        relevant_memories = self.search_memory(user_id, message, limit=5)
-
-        # 2. Get user profile
-        profile = self.get_user_profile(user_id)
-
-        # 3. Build system prompt
-        system_prompt = "You are the user's personal assistant.\n\n"
-
-        if profile["facts"]:
-            system_prompt += "Information about the user:\n"
-            for cat, facts in profile["facts"].items():
-                system_prompt += f"- {cat}: {', '.join(facts)}\n"
-
-        if profile["preferences"]:
-            system_prompt += f"\nUser preferences: {', '.join(profile['preferences'])}\n"
-
-        if relevant_memories:
-            system_prompt += "\nRelevant memories:\n"
-            for m in relevant_memories:
-                system_prompt += f"- {m['entity']['content']}\n"
-
-        # 4. Generate response
-        messages = [{"role": "system", "content": system_prompt}]
-
-        if conversation_history:
-            messages.extend(conversation_history[-10:])  # Last 10 turns
-
-        messages.append({"role": "user", "content": message})
-
-        response = self.openai.chat.completions.create(
-            model="gpt-5-mini",
-            messages=messages,
-            temperature=0.7
-        )
-
-        assistant_reply = response.choices[0].message.content
-
-        # 5. Extract new memories
-        new_memories = self.extract_memory(message, assistant_reply)
-        if new_memories:
-            self.save_memory(user_id, new_memories)
-
-        return assistant_reply
+    return results[0]
 ```
 
-## Examples
+### Step 4: Memory-Enhanced Response
 
 ```python
-assistant = PersonalAssistantMemory()
+def get_user_profile(user_id: str) -> dict:
+    """Get user profile from memories."""
+    facts = milvus.query(
+        collection_name="assistant_memory",
+        filter=f'user_id == "{user_id}" and memory_type == "fact"',
+        output_fields=["content", "category"],
+        limit=50
+    )
+
+    preferences = milvus.query(
+        collection_name="assistant_memory",
+        filter=f'user_id == "{user_id}" and memory_type == "preference"',
+        output_fields=["content"],
+        limit=50
+    )
+
+    profile = {"facts": {}, "preferences": []}
+
+    for f in facts:
+        cat = f["category"]
+        if cat not in profile["facts"]:
+            profile["facts"][cat] = []
+        profile["facts"][cat].append(f["content"])
+
+    profile["preferences"] = [p["content"] for p in preferences]
+
+    return profile
+
+def generate_response(user_id: str, message: str, history: list = None) -> str:
+    """Generate response with memory context."""
+    # Search relevant memories
+    relevant = search_memories(user_id, message, limit=5)
+
+    # Get user profile
+    profile = get_user_profile(user_id)
+
+    # Build system prompt with memory
+    system_prompt = "You are a personal assistant.\n\n"
+
+    if profile["facts"]:
+        system_prompt += "User information:\n"
+        for cat, facts in profile["facts"].items():
+            system_prompt += f"- {cat}: {', '.join(facts)}\n"
+
+    if profile["preferences"]:
+        system_prompt += f"\nPreferences: {', '.join(profile['preferences'])}\n"
+
+    if relevant:
+        system_prompt += "\nRelevant memories:\n"
+        for m in relevant:
+            system_prompt += f"- {m['entity']['content']}\n"
+
+    # Generate response
+    messages = [{"role": "system", "content": system_prompt}]
+    if history:
+        messages.extend(history[-10:])
+    messages.append({"role": "user", "content": message})
+
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        temperature=0.7
+    )
+
+    reply = resp.choices[0].message.content
+
+    # Extract and save new memories
+    new_memories = extract_memories(message, reply)
+    if new_memories:
+        save_memories(user_id, new_memories)
+
+    return reply
+```
+
+---
+
+## Run Example
+
+```python
 user_id = "user_001"
 
-# First conversation
-reply = assistant.generate_response(user_id, "Hi, I'm Mike, I live in New York")
-# Assistant remembers: User is named Mike, lives in New York
+# First conversation - establishes memory
+reply = generate_response(user_id, "Hi, I'm Mike and I live in New York")
+print(f"Assistant: {reply}")
+# Memories saved: name=Mike, location=New York
 
-# Later conversation
-reply = assistant.generate_response(user_id, "How's the weather in my city lately?")
-# Assistant knows user is in New York, can give more accurate answer
+# Later conversation - uses memory
+reply = generate_response(user_id, "How's the weather in my city?")
+print(f"Assistant: {reply}")
+# Assistant knows user is in New York
 
-# Remember preferences
-reply = assistant.generate_response(user_id, "Keep your answers brief, don't ramble")
-# Assistant remembers preference, future answers will be more concise
+# Preference learning
+reply = generate_response(user_id, "Keep answers brief, don't ramble")
+print(f"Assistant: {reply}")
+# Future answers will be more concise
 
-# View user profile
-profile = assistant.get_user_profile(user_id)
-print(profile)
+# Check profile
+profile = get_user_profile(user_id)
+print(f"User Profile: {profile}")
 ```
 
-## Memory Decay
+---
+
+## Memory Decay (Optional)
 
 ```python
-def decay_memories(self, user_id: str, decay_rate: float = 0.1):
-    """Memory decay: reduce importance of long-unaccessed memories"""
-    current_time = int(time.time())
-    one_month = 30 * 24 * 3600
+def decay_old_memories(user_id: str, decay_rate: float = 0.1):
+    """Reduce importance of old, unused memories."""
+    one_month_ago = int(time.time()) - 30 * 24 * 3600
 
-    old_memories = self.client.query(
+    old_memories = milvus.query(
         collection_name="assistant_memory",
-        filter=f'user_id == "{user_id}" and last_accessed < {current_time - one_month}',
+        filter=f'user_id == "{user_id}" and last_accessed < {one_month_ago}',
         output_fields=["id", "importance"]
     )
 
     for mem in old_memories:
         new_importance = max(0.1, mem["importance"] * (1 - decay_rate))
-        self.client.upsert(
+        milvus.upsert(
             collection_name="assistant_memory",
             data=[{"id": mem["id"], "importance": new_importance}]
         )

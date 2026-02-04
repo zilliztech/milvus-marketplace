@@ -1,190 +1,272 @@
 # E-commerce Hybrid Search
 
-## Why Hybrid Search is Needed
+> Combine semantic search with keyword matching for better product discovery.
 
-In e-commerce search scenarios:
-- **Keywords are important**: Brand names, model numbers, SKUs need exact matching
-- **Semantics are also important**: Users may describe the same product differently
-- **Single method is insufficient**: Pure keywords miss semantics, pure vectors miss exact terms
+---
 
-## Recommended Configuration
+## Before You Start
 
-| Config | Recommended Value | Description |
-|--------|------------------|-------------|
-| Dense Vector Model | `BAAI/bge-large-en-v1.5` | Semantic understanding |
-| Sparse Vector | BM25 / SPLADE | Keyword matching |
-| Fusion Method | RRF | Stable and effective |
-| RRF k Value | 60 | Default, adjustable |
-| Vector Weight | 0.6 | Slightly favor semantics |
-| Keyword Weight | 0.4 | Preserve exact matching |
+Answer these questions to configure the optimal setup:
 
-## Typical Scenarios
+### 1. Product Catalog Language
 
-### 1. Brand + Description Hybrid
+<ask_user>
+What language are your product titles and descriptions in?
 
-```python
-# User searches: "iPhone 15 Pro Max phone case transparent"
-# - "iPhone 15 Pro Max" needs exact matching
-# - "phone case transparent" can expand semantically to "protective case", "clear case"
+| Option | Model Recommendation |
+|--------|---------------------|
+| **English** | English models |
+| **Chinese** | Chinese models |
+| **Multilingual** | Multilingual models |
+</ask_user>
 
-query = "iPhone 15 Pro Max phone case transparent"
+### 2. Dense Embedding Method
 
-# Hybrid search
-results = client.hybrid_search(
-    collection_name="products",
-    reqs=[
-        AnnSearchRequest(data=[dense_embed(query)], anns_field="dense_vector", limit=50),
-        AnnSearchRequest(data=[sparse_embed(query)], anns_field="sparse_vector", limit=50)
-    ],
-    ranker=RRFRanker(k=60),
-    filter='in_stock == true',
-    limit=20,
-    output_fields=["title", "price", "brand"]
-)
+<ask_user>
+Choose your dense embedding approach:
+
+| Method | Pros | Cons |
+|--------|------|------|
+| **OpenAI API** | High quality | Requires API key |
+| **Local Model** | Free, offline | Model download required |
+</ask_user>
+
+### 3. Local Model Selection (if local)
+
+<ask_user>
+**For English:**
+
+| Model | Dimensions | Size | Notes |
+|-------|------------|------|-------|
+| `BAAI/bge-base-en-v1.5` | 768 | 440MB | Good balance |
+| `BAAI/bge-large-en-v1.5` | 1024 | 1.3GB | Best quality |
+
+**For Chinese:**
+
+| Model | Dimensions | Size | Notes |
+|-------|------------|------|-------|
+| `BAAI/bge-base-zh-v1.5` | 768 | 400MB | Good balance |
+| `BAAI/bge-large-zh-v1.5` | 1024 | 1.3GB | Best quality |
+</ask_user>
+
+### 4. Sparse Embedding
+
+<ask_user>
+Choose sparse embedding for keyword matching:
+
+| Method | Notes |
+|--------|-------|
+| **BM25** | Classic, works well |
+| **SPLADE** | Neural sparse, better quality |
+</ask_user>
+
+### 5. Data Scale
+
+<ask_user>
+How many products do you have?
+
+| Product Count | Recommended Milvus |
+|---------------|-------------------|
+| < 100K | **Milvus Lite** |
+| 100K - 10M | **Milvus Standalone** |
+| > 10M | **Zilliz Cloud** |
+</ask_user>
+
+### 6. Project Setup
+
+<ask_user>
+| Method | Best For |
+|--------|----------|
+| **uv + pyproject.toml** (recommended) | Production projects |
+| **pip** | Quick prototypes |
+</ask_user>
+
+---
+
+## Dependencies
+
+```bash
+uv init ecommerce-hybrid
+cd ecommerce-hybrid
+uv add pymilvus sentence-transformers
+# For BM25:
+uv add pymilvus[model]
 ```
 
-### 2. Model Number Query
+---
+
+## End-to-End Implementation
+
+### Step 1: Configure Models
 
 ```python
-# User searches: "A2894" (a product model number)
-# Pure semantic search may not find it, needs keywords
+from pymilvus import model
+from sentence_transformers import SentenceTransformer
 
-query = "A2894"
+# Dense embedding
+dense_model = SentenceTransformer("BAAI/bge-large-en-v1.5")
+DENSE_DIM = 1024
 
-# Keyword weight higher in this case
-results = client.hybrid_search(
-    collection_name="products",
-    reqs=[
-        AnnSearchRequest(data=[dense_embed(query)], anns_field="dense_vector",
-                        limit=50, params={"weight": 0.3}),
-        AnnSearchRequest(data=[sparse_embed(query)], anns_field="sparse_vector",
-                        limit=50, params={"weight": 0.7})
-    ],
-    ranker=WeightedRanker(0.3, 0.7),
-    limit=20
+# Sparse embedding (BM25)
+bm25_ef = model.sparse.BM25EmbeddingFunction(
+    analyzer="english",
+    k1=1.5,  # Term frequency saturation
+    b=0.75   # Length normalization
 )
+
+def dense_embed(texts: list[str]) -> list[list[float]]:
+    return dense_model.encode(texts, normalize_embeddings=True).tolist()
+
+def sparse_embed(texts: list[str]):
+    return bm25_ef.encode_documents(texts) if isinstance(texts, list) else bm25_ef.encode_queries(texts)
 ```
 
-### 3. Long-tail Query
+### Step 2: Create Collection
 
 ```python
-# User searches: "gift for programmer boyfriend"
-# Pure keywords can't find it, needs semantic understanding
+from pymilvus import MilvusClient, DataType
 
-query = "gift suitable for programmer boyfriend"
+client = MilvusClient("products.db")
 
-# Semantic weight higher
-results = client.hybrid_search(
-    collection_name="products",
-    reqs=[
-        AnnSearchRequest(data=[dense_embed(query)], anns_field="dense_vector",
-                        limit=50, params={"weight": 0.8}),
-        AnnSearchRequest(data=[sparse_embed(query)], anns_field="sparse_vector",
-                        limit=50, params={"weight": 0.2})
-    ],
-    ranker=WeightedRanker(0.8, 0.2),
-    limit=20
-)
+schema = client.create_schema(auto_id=True)
+schema.add_field("id", DataType.INT64, is_primary=True)
+schema.add_field("dense_vector", DataType.FLOAT_VECTOR, dim=DENSE_DIM)
+schema.add_field("sparse_vector", DataType.SPARSE_FLOAT_VECTOR)
+schema.add_field("product_id", DataType.VARCHAR, max_length=64)
+schema.add_field("title", DataType.VARCHAR, max_length=512)
+schema.add_field("category", DataType.VARCHAR, max_length=64)
+schema.add_field("brand", DataType.VARCHAR, max_length=128)
+schema.add_field("price", DataType.FLOAT)
+schema.add_field("in_stock", DataType.BOOL)
+
+index_params = client.prepare_index_params()
+index_params.add_index("dense_vector", index_type="AUTOINDEX", metric_type="COSINE")
+index_params.add_index("sparse_vector", index_type="SPARSE_INVERTED_INDEX", metric_type="IP")
+
+client.create_collection("products", schema=schema, index_params=index_params)
 ```
 
-## Dynamic Weight Strategy
+### Step 3: Index Products
 
 ```python
+def index_products(products: list[dict]):
+    """Index products with dense and sparse vectors."""
+    titles = [p["title"] for p in products]
+
+    # Fit BM25 on corpus (do this once with full corpus)
+    bm25_ef.fit(titles)
+
+    dense_vectors = dense_embed(titles)
+    sparse_vectors = bm25_ef.encode_documents(titles)
+
+    data = [
+        {
+            "dense_vector": dense,
+            "sparse_vector": sparse,
+            "product_id": p["product_id"],
+            "title": p["title"],
+            "category": p.get("category", ""),
+            "brand": p.get("brand", ""),
+            "price": p.get("price", 0.0),
+            "in_stock": p.get("in_stock", True)
+        }
+        for p, dense, sparse in zip(products, dense_vectors, sparse_vectors)
+    ]
+
+    client.insert(collection_name="products", data=data)
+```
+
+### Step 4: Hybrid Search
+
+```python
+from pymilvus import AnnSearchRequest, RRFRanker, WeightedRanker
+
 def get_search_weights(query: str) -> tuple:
-    """Dynamically adjust weights based on query characteristics"""
-    # Detect if contains model/SKU (letter+number combination)
+    """Dynamically adjust weights based on query type."""
     import re
+
+    # SKU/model number pattern
     has_sku = bool(re.search(r'[A-Za-z]+\d+|\d+[A-Za-z]+', query))
 
-    # Detect if contains brand
-    brands = ["Apple", "Samsung", "Nike", "Adidas", "Sony", "LG"]
-    has_brand = any(brand.lower() in query.lower() for brand in brands)
+    # Known brand names
+    brands = ["Apple", "Samsung", "Nike", "Sony", "iPhone", "Galaxy"]
+    has_brand = any(b.lower() in query.lower() for b in brands)
 
-    # Query length
     is_long_query = len(query) > 20
 
-    # Dynamic weights
     if has_sku:
-        return (0.2, 0.8)  # SKU query, keyword priority
+        return (0.2, 0.8)  # Keyword priority for SKU
     elif has_brand and not is_long_query:
-        return (0.4, 0.6)  # Brand + short query, balanced toward keywords
+        return (0.4, 0.6)  # Balanced with keyword lean
     elif is_long_query:
-        return (0.8, 0.2)  # Long query, semantic priority
+        return (0.8, 0.2)  # Semantic priority for descriptions
     else:
-        return (0.6, 0.4)  # Default, slightly favor semantics
-```
+        return (0.6, 0.4)  # Default: favor semantics
 
-## Performance Optimization
-
-```python
-# 1. Partitioning strategy: partition by L1 category
-client.create_partition(collection_name="products", partition_name="electronics")
-client.create_partition(collection_name="products", partition_name="clothing")
-
-# 2. Specify partition when searching
-results = client.hybrid_search(
-    collection_name="products",
-    reqs=[...],
-    partition_names=["electronics"],  # Only search electronics partition
-    limit=20
-)
-
-# 3. Pre-filter to reduce search scope
-results = client.hybrid_search(
-    collection_name="products",
-    reqs=[...],
-    filter='category_l1 == "electronics" and price >= 100 and price <= 1000',
-    limit=20
-)
-```
-
-## Examples
-
-```python
-from pymilvus import MilvusClient, AnnSearchRequest, RRFRanker
-
-client = MilvusClient("./milvus.db")
-
-def ecommerce_hybrid_search(query: str, category: str = None,
-                            price_range: tuple = None, limit: int = 20):
-    """E-commerce hybrid search"""
-    # Dynamic weights
+def hybrid_search(query: str, category: str = None, top_k: int = 20):
+    """Hybrid search combining dense and sparse vectors."""
     dense_weight, sparse_weight = get_search_weights(query)
 
-    # Build filter conditions
-    filters = ['in_stock == true']
+    dense_vec = dense_embed([query])[0]
+    sparse_vec = bm25_ef.encode_queries([query])[0]
+
+    # Build filter
+    filter_expr = 'in_stock == true'
     if category:
-        filters.append(f'category_l1 == "{category}"')
-    if price_range:
-        filters.append(f'price >= {price_range[0]} and price <= {price_range[1]}')
+        filter_expr += f' and category == "{category}"'
 
-    filter_expr = ' and '.join(filters)
-
-    # Hybrid search
     results = client.hybrid_search(
         collection_name="products",
         reqs=[
             AnnSearchRequest(
-                data=[dense_embed(query)],
+                data=[dense_vec],
                 anns_field="dense_vector",
-                limit=50,
-                param={"metric_type": "COSINE"}
+                param={"metric_type": "COSINE"},
+                limit=50
             ),
             AnnSearchRequest(
-                data=[sparse_embed(query)],
+                data=[sparse_vec],
                 anns_field="sparse_vector",
-                limit=50,
-                param={"metric_type": "IP"}
+                param={"metric_type": "IP"},
+                limit=50
             )
         ],
         ranker=WeightedRanker(dense_weight, sparse_weight),
         filter=filter_expr,
-        limit=limit,
-        output_fields=["title", "price", "brand", "image_url"]
+        limit=top_k,
+        output_fields=["product_id", "title", "price", "brand"]
     )
 
-    return results
+    return [{
+        "product_id": r["entity"]["product_id"],
+        "title": r["entity"]["title"],
+        "price": r["entity"]["price"],
+        "brand": r["entity"]["brand"],
+        "score": r["distance"]
+    } for r in results]
+```
 
-# Usage
-results = ecommerce_hybrid_search("iPhone 15 phone case", category="accessories")
+---
+
+## Run Example
+
+```python
+# Index products
+products = [
+    {"product_id": "A2894", "title": "Apple iPhone 15 Pro Max 256GB", "category": "Phones", "brand": "Apple", "price": 1199},
+    {"product_id": "B7721", "title": "Samsung Galaxy S24 Ultra", "category": "Phones", "brand": "Samsung", "price": 1099},
+]
+index_products(products)
+
+# SKU search (keyword priority)
+results = hybrid_search("A2894")
+
+# Descriptive search (semantic priority)
+results = hybrid_search("gift for programmer boyfriend")
+
+# Brand + feature search (balanced)
+results = hybrid_search("iPhone phone case transparent", category="Accessories")
+
+for r in results:
+    print(f"{r['title']} - ${r['price']}")
 ```

@@ -1,160 +1,306 @@
-# Enterprise Knowledge Base QA
+# Enterprise Knowledge Base
 
-## Data Characteristics
+> Build a RAG system for internal company documents, policies, and procedures.
 
-- Diverse document formats (PDF, Word, PPT, web pages)
-- Many internal terms and abbreviations
-- Permission control requirements
-- Need to trace sources
+---
 
-## Recommended Configuration
+## Before You Start
 
-| Config Item | Recommended Value | Notes |
-|-------------|-------------------|-------|
-| Embedding Model | `BAAI/bge-large-zh-v1.5` | Chinese |
-| | `BAAI/bge-m3` | Multilingual |
-| Chunk Size | 512 tokens | Balance precision and context |
-| Chunk Overlap | 50-100 tokens | Preserve context |
-| LLM | GPT-4o / Claude 3 | High-quality answers |
-| | Qwen-72B | Private deployment |
+Answer these questions to configure the optimal setup:
 
-## Schema Design
+### 1. Document Language
 
-```python
-schema = client.create_schema()
-schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=64)
-schema.add_field("content", DataType.VARCHAR, max_length=65535)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+<ask_user>
+What language are your documents in?
 
-# Source tracing
-schema.add_field("source", DataType.VARCHAR, max_length=512)       # File path
-schema.add_field("page", DataType.INT32)                           # Page number
-schema.add_field("chunk_index", DataType.INT32)                    # Chunk index
+| Option | Model Recommendation |
+|--------|---------------------|
+| **English** | English models |
+| **Chinese** | Chinese models |
+| **Multilingual** | Multilingual models |
+</ask_user>
 
-# Permission control
-schema.add_field("department", DataType.VARCHAR, max_length=64)    # Department
-schema.add_field("access_level", DataType.INT32)                   # Access level 1-5
-schema.add_field("tags", DataType.VARCHAR, max_length=256)         # Tags
+### 2. Embedding Method
 
-# Metadata
-schema.add_field("doc_type", DataType.VARCHAR, max_length=32)      # pdf/word/ppt
-schema.add_field("author", DataType.VARCHAR, max_length=128)
-schema.add_field("updated_at", DataType.INT64)                     # Update timestamp
+<ask_user>
+Choose your embedding approach:
+
+| Method | Pros | Cons |
+|--------|------|------|
+| **OpenAI API** | High quality | Data sent to cloud |
+| **Local Model** | Data stays on-premise | Model download |
+
+Note: For sensitive enterprise data, local models may be preferred.
+</ask_user>
+
+### 3. Local Model (if local)
+
+<ask_user>
+| Model | Dimensions | Size | Notes |
+|-------|------------|------|-------|
+| `all-MiniLM-L6-v2` | 384 | 80MB | Fast |
+| `BAAI/bge-base-en-v1.5` | 768 | 440MB | Higher quality |
+| `BAAI/bge-m3` | 1024 | 2.2GB | Multilingual |
+</ask_user>
+
+### 4. LLM for Generation
+
+<ask_user>
+| Model | Notes |
+|-------|-------|
+| **GPT-4o** | Best quality, cloud |
+| **GPT-4o-mini** | Cost-effective |
+| **Local LLM** (Ollama) | On-premise |
+</ask_user>
+
+### 5. Data Scale
+
+<ask_user>
+How many documents do you have?
+
+- Each document ≈ 50-200 chunks
+- Example: 500 documents ≈ 50K-100K vectors
+
+| Vector Count | Recommended Milvus |
+|--------------|-------------------|
+| < 100K | **Milvus Lite** |
+| 100K - 10M | **Milvus Standalone** |
+| > 10M | **Zilliz Cloud** |
+</ask_user>
+
+### 6. Project Setup
+
+<ask_user>
+| Method | Best For |
+|--------|----------|
+| **uv + pyproject.toml** (recommended) | Production |
+| **pip** | Quick prototype |
+</ask_user>
+
+---
+
+## Dependencies
+
+```bash
+uv init enterprise-kb
+cd enterprise-kb
+uv add pymilvus openai pymupdf python-docx
+# Or for local embedding:
+uv add pymilvus sentence-transformers openai pymupdf python-docx
 ```
 
-## Permission Filtering
+---
+
+## End-to-End Implementation
+
+### Step 1: Configure Embedding & LLM
 
 ```python
-def search_with_permission(query: str, user_info: dict, limit: int = 10):
-    """Search with permission control"""
-    user_dept = user_info.get("department", "")
-    user_level = user_info.get("access_level", 1)
+# === Choose ONE embedding approach ===
 
-    # Build permission filter condition
-    filter_expr = f'access_level <= {user_level}'
+# Option A: OpenAI
+from openai import OpenAI
+client = OpenAI()
 
-    # Department restriction (some documents visible only within department)
-    if user_dept:
-        filter_expr += f' and (department == "" or department == "{user_dept}")'
+def embed(texts: list[str]) -> list[list[float]]:
+    resp = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return [e.embedding for e in resp.data]
 
-    return client.search(
-        collection_name="enterprise_kb",
-        data=[embed(query)],
-        filter=filter_expr,
-        limit=limit,
-        output_fields=["content", "source", "page", "department"]
+DIMENSION = 1536
+
+# Option B: Local
+# from sentence_transformers import SentenceTransformer
+# model = SentenceTransformer("BAAI/bge-base-en-v1.5")
+# def embed(texts): return model.encode(texts, normalize_embeddings=True).tolist()
+# DIMENSION = 768
+
+def generate(prompt: str) -> str:
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2
     )
+    return resp.choices[0].message.content
 ```
 
-## Source Citations
+### Step 2: Create Collection
 
 ```python
-def generate_answer_with_citations(question: str, user_info: dict) -> dict:
-    """Generate answer with citations"""
-    # Retrieve
-    contexts = search_with_permission(question, user_info, limit=5)
+from pymilvus import MilvusClient, DataType
 
-    # Build prompt
-    context_text = ""
-    sources = []
-    for i, ctx in enumerate(contexts[0]):
-        context_text += f"[{i+1}] {ctx['entity']['content']}\n\n"
-        sources.append({
-            "index": i + 1,
-            "source": ctx["entity"]["source"],
-            "page": ctx["entity"]["page"]
-        })
+milvus = MilvusClient("enterprise_kb.db")
 
-    prompt = f"""Answer the question based on the following reference materials. Use [1], [2], etc. to cite sources in your answer.
+schema = milvus.create_schema(auto_id=True)
+schema.add_field("id", DataType.INT64, is_primary=True)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=DIMENSION)
+schema.add_field("content", DataType.VARCHAR, max_length=65535)
+schema.add_field("doc_id", DataType.VARCHAR, max_length=64)
+schema.add_field("doc_title", DataType.VARCHAR, max_length=256)
+schema.add_field("doc_type", DataType.VARCHAR, max_length=32)  # policy/procedure/guide
+schema.add_field("department", DataType.VARCHAR, max_length=64)
+schema.add_field("chunk_index", DataType.INT32)
+schema.add_field("last_updated", DataType.VARCHAR, max_length=32)
 
-Reference Materials:
-{context_text}
+index_params = milvus.prepare_index_params()
+index_params.add_index("embedding", index_type="AUTOINDEX", metric_type="COSINE")
+
+milvus.create_collection("enterprise_kb", schema=schema, index_params=index_params)
+```
+
+### Step 3: Document Processing
+
+```python
+import fitz  # pymupdf
+from docx import Document
+import os
+
+def extract_pdf(path: str) -> str:
+    doc = fitz.open(path)
+    return "\n".join(page.get_text() for page in doc)
+
+def extract_docx(path: str) -> str:
+    doc = Document(path)
+    return "\n".join(p.text for p in doc.paragraphs)
+
+def extract_text(path: str) -> str:
+    if path.endswith(".pdf"):
+        return extract_pdf(path)
+    elif path.endswith(".docx"):
+        return extract_docx(path)
+    elif path.endswith(".txt"):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
+
+def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> list[str]:
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end].strip())
+        start = end - overlap
+    return [c for c in chunks if c]
+```
+
+### Step 4: Index Documents
+
+```python
+def index_document(file_path: str, doc_id: str, doc_title: str,
+                   doc_type: str = "guide", department: str = "",
+                   last_updated: str = ""):
+    """Index a document into the knowledge base."""
+    text = extract_text(file_path)
+    chunks = chunk_text(text)
+    embeddings = embed(chunks)
+
+    data = [
+        {
+            "embedding": emb,
+            "content": chunk[:5000],
+            "doc_id": doc_id,
+            "doc_title": doc_title,
+            "doc_type": doc_type,
+            "department": department,
+            "chunk_index": i,
+            "last_updated": last_updated
+        }
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
+    ]
+
+    milvus.insert(collection_name="enterprise_kb", data=data)
+    print(f"Indexed {len(chunks)} chunks from {doc_title}")
+
+def index_folder(folder: str, department: str = ""):
+    """Index all documents in a folder."""
+    for file in os.listdir(folder):
+        if file.endswith((".pdf", ".docx", ".txt")):
+            path = os.path.join(folder, file)
+            doc_id = file.rsplit(".", 1)[0]
+            index_document(path, doc_id, file, department=department)
+```
+
+### Step 5: Search & Answer
+
+```python
+def search_kb(query: str, top_k: int = 5,
+              doc_type: str = None, department: str = None):
+    """Search the knowledge base."""
+    query_embedding = embed([query])[0]
+
+    filters = []
+    if doc_type:
+        filters.append(f'doc_type == "{doc_type}"')
+    if department:
+        filters.append(f'department == "{department}"')
+
+    filter_expr = " and ".join(filters) if filters else None
+
+    results = milvus.search(
+        collection_name="enterprise_kb",
+        data=[query_embedding],
+        filter=filter_expr,
+        limit=top_k,
+        output_fields=["content", "doc_title", "doc_type", "department"]
+    )
+    return results[0]
+
+def answer_question(question: str, department: str = None) -> str:
+    """Answer a question using RAG."""
+    results = search_kb(question, top_k=5, department=department)
+
+    if not results:
+        return "I couldn't find relevant information in the knowledge base."
+
+    # Build context
+    context = "\n\n".join([
+        f"[{r['entity']['doc_title']}]\n{r['entity']['content'][:800]}"
+        for r in results
+    ])
+
+    prompt = f"""You are an enterprise knowledge assistant. Answer based on the provided documents.
+
+Documents:
+{context}
 
 Question: {question}
 
+Instructions:
+- Be accurate and cite the document name when possible
+- If the information is not in the documents, say so
+- Be concise and professional
+
 Answer:"""
 
-    response = llm.chat.completions.create(
-        model="gpt-5-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-
-    return {
-        "answer": response.choices[0].message.content,
-        "sources": sources
-    }
+    return generate(prompt)
 ```
 
-## Document Update Strategy
+---
+
+## Run Example
 
 ```python
-def update_document(file_path: str, department: str, access_level: int):
-    """Update a single document"""
-    import time
+# Index documents
+index_document(
+    "hr_policies.pdf",
+    doc_id="HR-001",
+    doc_title="HR Policies 2024",
+    doc_type="policy",
+    department="HR",
+    last_updated="2024-01-01"
+)
 
-    # Delete old chunks
-    client.delete(
-        collection_name="enterprise_kb",
-        filter=f'source == "{file_path}"'
-    )
+index_document(
+    "expense_procedure.docx",
+    doc_id="FIN-001",
+    doc_title="Expense Reimbursement Procedure",
+    doc_type="procedure",
+    department="Finance"
+)
 
-    # Reprocess and insert
-    chunks = process_document(file_path)
+# Answer questions
+answer = answer_question("What is the vacation policy?")
+print(answer)
 
-    data = []
-    for i, chunk in enumerate(chunks):
-        data.append({
-            "id": f"{file_path}_{i}",
-            "content": chunk["text"],
-            "embedding": embed(chunk["text"]),
-            "source": file_path,
-            "page": chunk.get("page", 0),
-            "chunk_index": i,
-            "department": department,
-            "access_level": access_level,
-            "doc_type": file_path.split(".")[-1],
-            "updated_at": int(time.time())
-        })
-
-    client.insert(collection_name="enterprise_kb", data=data)
+answer = answer_question("How do I submit an expense report?", department="Finance")
+print(answer)
 ```
-
-## Example Queries
-
-```python
-# Regular employee query
-user = {"department": "Sales", "access_level": 2}
-result = generate_answer_with_citations("What is the company's reimbursement process?", user)
-
-# Management query
-admin = {"department": "Management", "access_level": 5}
-result = generate_answer_with_citations("This quarter's financial report analysis", admin)
-```
-
-## Best Practices
-
-1. **Regular Updates**: Set scheduled tasks to check for document changes
-2. **Version Control**: Keep historical versions, support rollback
-3. **Usage Feedback**: Collect user feedback to optimize retrieval quality
-4. **Glossary**: Maintain internal company glossary to assist query rewriting
