@@ -384,11 +384,11 @@ class CachedReranker:
 
 ## When to Level Up
 
-| Symptom | Solution | Skill |
-|---------|----------|-------|
-| Questions need multi-step reasoning | Multi-hop retrieval | [multi-hop-rag](../multi-hop-rag/SKILL.md) |
-| Need dynamic, conversational retrieval | Agentic approach | [agentic-rag](../agentic-rag/SKILL.md) |
-| Keyword matching important | Hybrid search | See [rag/references/advanced-patterns.md](../rag/references/advanced-patterns.md) |
+| Symptom | Solution | Recommendation |
+|---------|----------|----------------|
+| Questions need multi-step reasoning | Multi-hop retrieval | Use `rag-toolkit:multi-hop-rag` skill |
+| Need dynamic, conversational retrieval | Agentic approach | Use `rag-toolkit:agentic-rag` skill |
+| Keyword matching important | Hybrid search | Combine with BM25 keyword search (consult basic RAG skill for hybrid patterns) |
 
 ## References
 
@@ -396,8 +396,8 @@ class CachedReranker:
 - [references/reranker-comparison.md](references/reranker-comparison.md) - Model benchmarks and selection guide
 
 **Related skills**:
-- [rag](../rag/SKILL.md) - Basic RAG (when speed > precision)
-- [agentic-rag](../agentic-rag/SKILL.md) - Agent-driven retrieval
+- `rag-toolkit:rag` - Basic RAG (when speed > precision)
+- `rag-toolkit:agentic-rag` - Agent-driven retrieval
 - `core:rerank` - Reranking utilities
 
 **Verticals**:

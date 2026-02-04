@@ -116,13 +116,11 @@ The pilot will automatically activate, clarify requirements, and help you orches
 | Type | Skill | Purpose |
 |------|-------|---------|
 | Controller | **pilot** | AI application navigator - understands requirements, orchestrates tools, delivers code |
+| Operator | **ray** | Data processing orchestration (batch import, video processing, etc.) |
 | Operator | **embedding** | Text/image vectorization |
 | Operator | **chunking** | Document chunking |
 | Operator | **indexing** | Milvus index management |
-| Operator | **data-ingestion** | Batch data import |
 | Operator | **rerank** | Search result reranking |
-| Operator | **pdf-extract** | PDF text extraction |
-| Operator | **vlm-caption** | Image captioning (VLM) |
 | Environment | **local-setup** | Local Milvus deployment |
 
 ### Scenario Plugins - Pre-built Solutions (6 Plugins, 17 Skills)
@@ -135,6 +133,7 @@ The pilot will automatically activate, clarify requirements, and help you orches
 | **hybrid-search** | vector + BM25 keyword + score fusion | E-commerce, legal, academic |
 | **filtered-search** | vector search + scalar filtering | E-commerce, recruitment, real estate |
 | **multi-vector-search** | multi-vector field joint search | Products, papers, resumes |
+| **contextual-retrieval** | parent-child chunking with context expansion | Legal contracts, technical docs |
 
 #### rag-toolkit - RAG / Q&A
 

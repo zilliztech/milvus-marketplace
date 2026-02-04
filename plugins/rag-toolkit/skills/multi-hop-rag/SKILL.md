@@ -538,11 +538,11 @@ def multi_hop_with_rerank(self, question: str) -> dict:
 
 ## When to Level Up
 
-| Symptom | Solution | Skill |
-|---------|----------|-------|
-| Need dynamic conversation | Agent-based approach | [agentic-rag](../agentic-rag/SKILL.md) |
-| Need higher precision per hop | Add reranking | [rag-with-rerank](../rag-with-rerank/SKILL.md) |
-| External data sources needed | Full agent framework | LangChain/LlamaIndex |
+| Symptom | Solution | Recommendation |
+|---------|----------|----------------|
+| Need dynamic conversation | Agent-based approach | Use `rag-toolkit:agentic-rag` skill |
+| Need higher precision per hop | Add reranking | Use `rag-toolkit:rag-with-rerank` skill |
+| External data sources needed | Full agent framework | Consider LangChain/LlamaIndex |
 
 ## References
 
@@ -550,9 +550,9 @@ def multi_hop_with_rerank(self, question: str) -> dict:
 - [references/decomposition-strategies.md](references/decomposition-strategies.md) - Question decomposition techniques
 
 **Related skills**:
-- [rag](../rag/SKILL.md) - Basic RAG (simpler questions)
-- [agentic-rag](../agentic-rag/SKILL.md) - Dynamic, conversational retrieval
-- [rag-with-rerank](../rag-with-rerank/SKILL.md) - Higher precision per hop
+- `rag-toolkit:rag` - Basic RAG (simpler questions)
+- `rag-toolkit:agentic-rag` - Dynamic, conversational retrieval
+- `rag-toolkit:rag-with-rerank` - Higher precision per hop
 
 **Verticals**:
 - [verticals/troubleshooting.md](verticals/troubleshooting.md) - Multi-step diagnosis

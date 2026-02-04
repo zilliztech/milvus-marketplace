@@ -286,11 +286,11 @@ See [references/embedding-models.md](references/embedding-models.md) for detaile
 
 ## When to Level Up
 
-| Symptom | Solution | Skill |
-|---------|----------|-------|
-| Top results aren't the best | Add reranking | [rag-with-rerank](../rag-with-rerank/SKILL.md) |
-| Complex multi-step questions | Use agentic approach | [agentic-rag](../agentic-rag/SKILL.md) |
-| Questions need cross-doc reasoning | Multi-hop retrieval | [multi-hop-rag](../multi-hop-rag/SKILL.md) |
+| Symptom | Solution | Recommendation |
+|---------|----------|----------------|
+| Top results aren't the best | Add reranking | Use `rag-toolkit:rag-with-rerank` skill |
+| Complex multi-step questions | Use agentic approach | Use `rag-toolkit:agentic-rag` skill |
+| Questions need cross-doc reasoning | Multi-hop retrieval | Use `rag-toolkit:multi-hop-rag` skill |
 
 ## References
 

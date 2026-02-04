@@ -75,6 +75,7 @@ Match scenarios when user describes specific application requirements:
 | Keyword + semantic hybrid | `retrieval-system:hybrid-search` |
 | Search with filters | `retrieval-system:filtered-search` |
 | Multi-field joint search | `retrieval-system:multi-vector-search` |
+| Parent document retrieval, hierarchical chunking | `retrieval-system:contextual-retrieval` |
 | Knowledge Q&A, RAG | `rag-toolkit:rag` |
 | High-precision Q&A | `rag-toolkit:rag-with-rerank` |
 | Complex question analysis | `rag-toolkit:multi-hop-rag` |

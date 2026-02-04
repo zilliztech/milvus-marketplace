@@ -534,11 +534,11 @@ tools = [
 
 ## When to Level Up
 
-| Symptom | Solution | Skill |
-|---------|----------|-------|
-| Need higher precision | Add reranking | [rag-with-rerank](../rag-with-rerank/SKILL.md) |
-| Complex multi-step reasoning | Structured decomposition | [multi-hop-rag](../multi-hop-rag/SKILL.md) |
-| Need external tools (web, APIs) | Full agent framework | LangChain/LlamaIndex agents |
+| Symptom | Solution | Recommendation |
+|---------|----------|----------------|
+| Need higher precision | Add reranking | Use `rag-toolkit:rag-with-rerank` skill |
+| Complex multi-step reasoning | Structured decomposition | Use `rag-toolkit:multi-hop-rag` skill |
+| Need external tools (web, APIs) | Full agent framework | Consider LangChain/LlamaIndex agents |
 
 ## References
 
@@ -547,8 +547,8 @@ tools = [
 - [references/tool-design.md](references/tool-design.md) - Tool design best practices
 
 **Related skills**:
-- [rag](../rag/SKILL.md) - Basic RAG (simpler, faster)
-- [multi-hop-rag](../multi-hop-rag/SKILL.md) - Structured multi-step reasoning
+- `rag-toolkit:rag` - Basic RAG (simpler, faster)
+- `rag-toolkit:multi-hop-rag` - Structured multi-step reasoning
 
 **Verticals**:
 - [verticals/research-agent.md](verticals/research-agent.md) - Research assistant

@@ -10,6 +10,7 @@ How to match the best solution for user requirements.
 | "Keyword + semantic", "full-text + vector" | Hybrid search | `retrieval-system:hybrid-search` |
 | "Search with conditions", "filter by category" | Filtered search | `retrieval-system:filtered-search` |
 | "Match across multiple fields" | Multi-vector search | `retrieval-system:multi-vector-search` |
+| "Parent document", "hierarchical chunks", "small-to-big" | Contextual retrieval | `retrieval-system:contextual-retrieval` |
 | "Q&A", "knowledge base", "RAG" | Knowledge Q&A | `rag-toolkit:rag` |
 | "Document Q&A", "PDF Q&A" | Document QA (RAG variant) | `rag-toolkit:rag` |
 | "High-precision Q&A", "results not accurate enough" | RAG with rerank | `rag-toolkit:rag-with-rerank` |
@@ -95,6 +96,27 @@ How to match the best solution for user requirements.
 - Product search (title + description + image)
 - Academic papers (title + abstract)
 - Resume matching (skills + experience)
+
+### Contextual Retrieval (`retrieval-system:contextual-retrieval`)
+
+**Typical expressions**:
+- "Need broader context around matched chunks"
+- "Parent document retrieval"
+- "Hierarchical chunking"
+- "Small chunks for search, big chunks for context"
+- "Lost in the middle problem"
+
+**Core characteristics**:
+- Parent-child document structure
+- Search on small child chunks for precision
+- Return parent chunks for complete context
+- Deduplication of parent contexts
+
+**Use cases**:
+- Legal contract Q&A (clause + surrounding sections)
+- Technical documentation (code snippet + explanation)
+- Long-form research papers (precise matching with context)
+- Product manuals (specific instruction + full procedure)
 
 ### RAG (`rag-toolkit:rag`)
 
